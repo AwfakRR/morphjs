@@ -1,0 +1,21 @@
+{
+  "name": "@morphjs/playground",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "morphjs": "workspace:*",
+    "motion": "^12.4.7",
+    "animejs": "^4.5.0",
+    "morph-stripped": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.5.4",
+    "vite": "~6.0.0"
+  }
+}

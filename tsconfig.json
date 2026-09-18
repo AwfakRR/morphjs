@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "morphjs": ["packages/core/src"],
+      "morphjs/*": ["packages/core/src/*"],
+      "@morphjs/core": ["packages/core/src"],
+      "@morphjs/core/*": ["packages/core/src/*"],
+      "@morphjs/react": ["packages/react/src"],
+      "@morphjs/react/*": ["packages/react/src/*"],
+      "@morphjs/vue": ["packages/vue/src"],
+      "@morphjs/vue/*": ["packages/vue/src/*"],
+      "@morphjs/svelte": ["packages/svelte/src"],
+      "@morphjs/svelte/*": ["packages/svelte/src/*"],
+      "@morphjs/tanstack": ["packages/tanstack/src"],
+      "@morphjs/tanstack/*": ["packages/tanstack/src/*"]
+    }
+  },
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/react" },
+    { "path": "./packages/vue" },
+    { "path": "./packages/svelte" },
+    { "path": "./packages/tanstack" }
+  ],
+  "files": []
+}

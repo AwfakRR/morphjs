@@ -1,0 +1,44 @@
+{
+  "name": "morph-stripped",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/morphjs.cjs",
+  "module": "dist/morphjs.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/morphjs.js",
+      "require": "./dist/morphjs.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "animejs": ">=4.0.0",
+    "motion": ">=11.0.0"
+  },
+  "peerDependenciesMeta": {
+    "animejs": {
+      "optional": true
+    },
+    "motion": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "animejs": ">=4.0.0",
+    "motion": ">=11.0.0",
+    "vite": "~6.0.0",
+    "vite-plugin-dts": "^4.2.1"
+  }
+}

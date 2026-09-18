@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MorphJS Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./src/style.css" />
+</head>
+<body>
+  <header class="hero">
+    <h1>MorphJS</h1>
+    <p class="subtitle">The shortest, easiest animation engine combining Motion.js & Anime.js v4</p>
+    <div class="badge">5.97 KB gzip</div>
+  </header>
+
+  <main class="container">
+    <!-- Demo 1: Quick -->
+    <section class="card" id="demo-quick">
+      <div class="card-header">
+        <h2>Quick Start (Shorthand)</h2>
+        <div class="code-preview">morph('.box', { x: 100 }, 0.5)</div>
+      </div>
+      <div class="card-body">
+        <div class="demo-area">
+          <div id="quick-box" class="box neon-blue"></div>
+        </div>
+        <div class="controls">
+          <button id="btn-quick-move">Move X</button>
+          <button id="btn-quick-rotate">Rotate</button>
+          <button id="btn-quick-reset">Reset</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 2: Spring -->
+    <section class="card" id="demo-spring">
+      <div class="card-header">
+        <h2>Spring Physics</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area">
+          <div id="spring-ball" class="ball neon-purple"></div>
+        </div>
+        <div class="controls sliders">
+          <label>Stiffness <input type="range" id="spring-stiffness" min="10" max="200" value="100"> <span id="val-stiffness">100</span></label>
+          <label>Damping <input type="range" id="spring-damping" min="1" max="50" value="10"> <span id="val-damping">10</span></label>
+          <label>Mass <input type="range" id="spring-mass" min="0.1" max="10" step="0.1" value="1"> <span id="val-mass">1</span></label>
+          <button id="btn-spring-trigger">Trigger</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 3: Timeline -->
+    <section class="card" id="demo-timeline">
+      <div class="card-header">
+        <h2>Timeline & Controls</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area">
+          <div class="tl-box neon-cyan" id="tl-box-1"></div>
+          <div class="tl-box neon-green" id="tl-box-2"></div>
+          <div class="tl-box neon-blue" id="tl-box-3"></div>
+        </div>
+        <div class="controls">
+          <button id="btn-tl-play">Play</button>
+          <button id="btn-tl-pause">Pause</button>
+          <button id="btn-tl-reverse">Reverse</button>
+          <button id="btn-tl-restart">Restart</button>
+        </div>
+        <div class="controls scrub">
+          <label>Scrub <input type="range" id="tl-scrub" min="0" max="1" step="0.001" value="0"></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 4: Stagger -->
+    <section class="card" id="demo-stagger">
+      <div class="card-header">
+        <h2>Stagger Grid</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area">
+          <div id="stagger-grid" class="grid-6x6">
+            <!-- JS will populate 36 dots -->
+          </div>
+        </div>
+        <div class="controls">
+          <button id="btn-stag-center">Center</button>
+          <button id="btn-stag-edge">Edge</button>
+          <button id="btn-stag-random">Random</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 5: Gesture -->
+    <section class="card" id="demo-gesture">
+      <div class="card-header">
+        <h2>Gestures (Drag, Hover, Press)</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area gesture-area">
+          <div id="gesture-card" class="interactive-card neon-purple">Drag Me</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 6: Scroll -->
+    <section class="card" id="demo-scroll">
+      <div class="card-header">
+        <h2>Scroll Tracking</h2>
+      </div>
+      <div class="card-body">
+        <div class="progress-bar-container">
+          <div id="scroll-progress" class="progress-bar neon-cyan"></div>
+        </div>
+        <div id="scroll-container" class="scroll-container">
+          <div class="scroll-track">
+            <div id="parallax-element" class="parallax-box neon-green">Parallax</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo 7: SVG -->
+    <section class="card" id="demo-svg">
+      <div class="card-header">
+        <h2>SVG Draw & Morph</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area svg-area">
+          <svg viewBox="0 0 200 200" width="100" height="100">
+            <path id="svg-stroke" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"
+                  d="M100 20 L120 70 L180 80 L130 115 L145 170 L100 140 L55 170 L70 115 L20 80 L80 70 Z" />
+          </svg>
+          <svg viewBox="0 0 200 200" width="100" height="100">
+            <path id="svg-morph-path" fill="currentColor" 
+                  d="M100 20 L120 70 L180 80 L130 115 L145 170 L100 140 L55 170 L70 115 L20 80 L80 70 Z" />
+          </svg>
+        </div>
+        <div class="controls">
+          <button id="btn-svg-draw">Draw Stroke</button>
+          <button id="btn-svg-morph">Morph Shape</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Framework Tabs -->
+    <section class="card framework-section">
+      <div class="card-header">
+        <h2>Framework Integrations</h2>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" data-target="tab-react">React</button>
+        <button class="tab-btn" data-target="tab-vue">Vue</button>
+        <button class="tab-btn" data-target="tab-svelte">Svelte</button>
+        <button class="tab-btn" data-target="tab-tanstack">TanStack</button>
+      </div>
+      <div class="tab-content">
+        <pre id="tab-react" class="tab-pane active"><code>import { useMorph } from 'morphjs/react';
+
+function App() {
+  const ref = useMorph({ x: 100 }, { duration: 0.5 });
+  return &lt;div ref={ref} /&gt;;
+}</code></pre>
+        <pre id="tab-vue" class="tab-pane"><code>&lt;script setup&gt;
+import { vMorph } from 'morphjs/vue';
+&lt;/script&gt;
+
+&lt;template&gt;
+  &lt;div v-morph="{ x: 100, duration: 0.5 }"&gt;&lt;/div&gt;
+&lt;/template&gt;</code></pre>
+        <pre id="tab-svelte" class="tab-pane"><code>&lt;script&gt;
+import { morph } from 'morphjs/svelte';
+&lt;/script&gt;
+
+&lt;div use:morph={{ x: 100, duration: 0.5 }}&gt;&lt;/div&gt;</code></pre>
+        <pre id="tab-tanstack" class="tab-pane"><code>import { createMorph } from 'morphjs/tanstack';
+
+const morph = createMorph();
+// Integration snippet
+</code></pre>
+      </div>
+    </section>
+
+  </main>
+
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>
