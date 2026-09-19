@@ -36,6 +36,7 @@ function detectRequiredCapability(options: any): AdapterCapability {
  */
 export function resolveAdapter(options?: {
   adapter?: string;
+  engine?: string;
   spring?: MorphSpringOptions;
   scroll?: boolean;
   gesture?: boolean;
@@ -43,10 +44,11 @@ export function resolveAdapter(options?: {
   svg?: boolean;
   stagger?: MorphStaggerOptions;
 }): IAnimationAdapter {
-  if (options?.adapter) {
-    const adapter = adapterRegistry.get(options.adapter);
+  const chosen = options?.engine || options?.adapter;
+  if (chosen) {
+    const adapter = adapterRegistry.get(chosen);
     if (adapter) return adapter;
-    console.warn(`[MorphJS] Adapter "${options.adapter}" not found. Falling back.`);
+    console.warn(`[MorphJS] Adapter/Engine "${chosen}" not found. Falling back.`);
   }
 
   const requiredCapability = detectRequiredCapability(options);

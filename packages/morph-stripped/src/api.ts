@@ -9,8 +9,10 @@ export type AnimateArg = MorphAnimationOptions | number;
 
 export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: AnimateArg): MorphControls {
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
-  if (o.engine === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
-  if (o.engine === 'anime' || 'd' in props || 'strokeDashoffset' in props || o.repeat !== undefined)
+  const e = o.engine || o.adapter;
+  if (e === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
+  if (e === 'motion') return createDeferred(loadMotion, (m) => wrap(m.animate(tgts, props, o), 'm'));
+  if (e === 'anime' || 'd' in props || 'strokeDashoffset' in props || o.repeat !== undefined)
     return createDeferred(loadAnime, (a) => wrap(a.animate(tgts, toAnimeOptions(props, o)), 'a'));
   return createDeferred(loadMotion, (m) => wrap(m.animate(tgts, props, o), 'm'));
 }
@@ -20,33 +22,76 @@ export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: Mor
 }
 
 export function timeline(opt?: TimelineOptions): MorphTimeline {
-  const seq: any[] = [];
-  let r: any = null, ue = opt?.engine === 'gsap', ae = ue ? 'g' : 'a';
+  const seq: Array<{ t: any; p: any; o?: any }> = [];
+  let realTl: any = null;
+  const useGsap = opt?.engine === 'gsap';
+  let activeEngine: 'g' | 'a' = useGsap ? 'g' : 'a';
 
-  const ba = (a: any) => {
-    r = a.createTimeline({ autoplay: opt?.autoplay ?? true, defaults: opt?.defaults ? toAnimeOptions(opt.defaults) : undefined });
-    seq.forEach(s => r.add(s.t, toAnimeOptions(s.p), s.o));
-    return wrap(r, 'a');
+  const buildAnime = (anime: any) => {
+    const tl = anime.createTimeline({
+      autoplay: opt?.autoplay ?? true,
+      defaults: opt?.defaults ? toAnimeOptions(opt.defaults) : undefined,
+    });
+    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p), s.o));
+    realTl = tl;
+    return wrap(tl, 'a');
   };
-  const bg = ({ gsap }: any) => {
+
+  const buildGsap = ({ gsap }: any) => {
     const d: any = {};
     if (opt?.defaults?.duration !== undefined) d.duration = opt.defaults.duration;
     if (opt?.defaults?.ease !== undefined) d.ease = opt.defaults.ease;
-    r = gsap.timeline({ paused: opt?.autoplay === false, defaults: Object.keys(d).length ? d : undefined });
-    seq.forEach(s => r.to(s.t, toGsapOptions(s.p), s.o));
-    return wrap(r, 'g');
+    const tl = gsap.timeline({
+      paused: opt?.autoplay === false,
+      defaults: Object.keys(d).length ? d : undefined,
+    });
+    seq.forEach(s => tl.to(s.t, toGsapOptions(s.p), s.o));
+    realTl = tl;
+    return wrap(tl, 'g');
   };
 
-  const ld = ue ? () => loadGsap().catch(() => { ae = 'a'; return loadAnime(); }) : () => loadAnime().catch(() => { ae = 'g'; return loadGsap(); });
-  const d = createDeferred(ld, (m) => ae === 'g' ? bg(m) : ba(m));
+  const ld = useGsap
+    ? () => loadGsap().catch(() => { activeEngine = 'a'; return loadAnime(); })
+    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsap(); });
 
-  const tlo: MorphTimeline = Object.assign(d, {
-    add(t: any, p: any, o?: any) { r ? (ae === 'g' ? r.to(t, toGsapOptions(p), o) : r.add(t, toAnimeOptions(p), o)) : seq.push({t,p,o}); return tlo; },
-    label(n: string, o?: any) { if (r && ae === 'g') r.addLabel(n, o); return tlo; },
-    addPause(o?: any, c?: any) { if (r && ae === 'g') r.addPause(o, c); return tlo; },
-    get duration() { return r ? (ae === 'g' ? (r.duration() || 0) : (r.duration || 0) / 1000) : 0; },
-  });
-  if (opt?.autoplay !== false) Promise.resolve().then(() => tlo.play());
+  const deferred = createDeferred(ld, (m) => activeEngine === 'g' ? buildGsap(m) : buildAnime(m));
+
+  const tlo: MorphTimeline = {
+    ...deferred,
+    add(t: any, p: any, o?: any) {
+      if (realTl) {
+        if (activeEngine === 'g') realTl.to(t, toGsapOptions(p), o);
+        else realTl.add(t, toAnimeOptions(p), o);
+      } else {
+        seq.push({ t, p, o });
+      }
+      return tlo;
+    },
+    label(n: string, o?: any) {
+      if (realTl && activeEngine === 'g') realTl.addLabel(n, o);
+      return tlo;
+    },
+    addPause(o?: any, c?: any) {
+      if (realTl && activeEngine === 'g') realTl.addPause(o, c);
+      return tlo;
+    },
+    get duration() {
+      if (!realTl) return 0;
+      return activeEngine === 'g' ? (realTl.duration?.() ?? 0) : ((realTl.duration ?? 0) / 1000);
+    },
+    get currentTime() {
+      if (!realTl) return 0;
+      return activeEngine === 'g' ? (realTl.time?.() ?? 0) : ((realTl.currentTime ?? 0) / 1000);
+    },
+    get progress() {
+      if (!realTl) return 0;
+      return (activeEngine === 'g' ? realTl.progress?.() : realTl.progress) ?? 0;
+    },
+  };
+
+  if (opt?.autoplay !== false) {
+    Promise.resolve().then(() => tlo.play());
+  }
   return tlo;
 }
 

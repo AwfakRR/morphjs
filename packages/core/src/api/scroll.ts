@@ -59,7 +59,11 @@ export function scroll(
     return createNoopControls();
   }
 
-  const adapter = resolveAdapter({ scroll: true });
+  const adapter = resolveAdapter({
+    scroll: true,
+    adapter: (options as any)?.adapter,
+    engine: (options as any)?.engine,
+  });
   let controls: MorphControls = createNoopControls();
 
   if (typeof animationOrCallback === 'function') {

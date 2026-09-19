@@ -15,6 +15,8 @@ export interface MorphAnimationOptions {
   repeat?: number;
   direction?: 'normal' | 'reverse' | 'alternate' | 'alternate-reverse';
   autoplay?: boolean;
+  adapter?: string;
+  engine?: 'motion' | 'anime' | 'gsap' | string;
   onStart?: () => void;
   onUpdate?: (progress: number) => void;
   onComplete?: () => void;

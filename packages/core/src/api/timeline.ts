@@ -55,8 +55,12 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
   const buildRealTimeline = (): MorphTimeline | null => {
     if (realTimeline) return realTimeline;
 
-    // Timeline capability routes to AnimeAdapter
-    const adapter = resolveAdapter({ timeline: true });
+    // Timeline capability routes to AnimeAdapter or GsapAdapter
+    const adapter = resolveAdapter({
+      timeline: true,
+      adapter: options?.adapter,
+      engine: (options as any)?.engine,
+    });
 
     if (!adapter.timeline) {
       throw new Error('[MorphJS] Resolved adapter does not support timelines.');

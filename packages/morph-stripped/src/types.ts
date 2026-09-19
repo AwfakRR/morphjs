@@ -10,6 +10,8 @@ export interface MorphAnimationOptions {
   repeat?: number;
   direction?: 'normal' | 'reverse' | 'alternate' | 'alternate-reverse';
   autoplay?: boolean;
+  engine?: 'motion' | 'anime' | 'gsap' | string;
+  adapter?: string;
   onStart?: () => void;
   onUpdate?: (progress: number) => void;
   onComplete?: () => void;
@@ -48,6 +50,7 @@ export interface MorphControls {
   finish(): void;
   restart(): void;
   seek?(time: number): void;
+  readonly duration?: number;
   readonly progress: number;
   readonly currentTime: number;
   readonly playState: 'running' | 'paused' | 'finished' | 'idle' | 'cancelled';

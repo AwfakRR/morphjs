@@ -28,7 +28,8 @@ export const svg = {
     }
     
     const { d, ...animOptions } = options;
-    return animate(targets, { d }, { ...animOptions, adapter: 'anime' });
+    const chosen = (options as any).engine || (options as any).adapter || 'anime';
+    return animate(targets, { d }, { ...animOptions, adapter: chosen });
   },
 
   /**

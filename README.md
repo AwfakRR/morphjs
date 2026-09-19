@@ -16,7 +16,7 @@
 
 ---
 
-## <img src=".github/assets/Why.png" width="32" height="32" align="center" /> Why MorphJS?
+## 💡 Why MorphJS?
 
 Modern web animation is fragmented:
 - **Motion.js** is unmatched for physical springs and WAAPI compositor transforms, but vanilla JS usage can be verbose.
@@ -34,7 +34,7 @@ Modern web animation is fragmented:
 
 ---
 
-## <img src=".github/assets/Package.png" width="32" height="32" align="center" /> Packages & Flavors
+## 📦 Packages & Flavors
 
 MorphJS comes in two editions tailored to your architecture:
 
@@ -53,7 +53,7 @@ MorphJS comes in two editions tailored to your architecture:
 
 ---
 
-## <img src=".github/assets/QuickStart.png" width="32" height="32" align="center" /> Quick Start (API)
+## ⚡ Quick Start (API)
 
 ```ts
 import morph, { timeline, spring, stagger, scroll, gesture, svg } from 'morph-stripped';
@@ -95,7 +95,7 @@ svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
 
 ---
 
-## <img src=".github/assets/Architecture.png" width="32" height="32" align="center" /> Architecture: Balanced & Agnostic
+## 🏗️ Architecture: Balanced & Agnostic
 
 No single engine dominates. MorphJS automatically routes each animation to the engine best equipped for the job:
 
@@ -132,7 +132,7 @@ MorphJS is purpose-built for the era of AI coding agents (Trae, Cursor, Copilot,
 
 ---
 
-## <img src=".github/assets/Playground.png" width="32" height="32" align="center" /> Interactive Playground
+## 🎮 Interactive Playground
 
 Test every capability live (Gestures, Springs, Timelines, Staggers, SVGs, and ScrollTrigger):
 
@@ -141,10 +141,10 @@ pnpm install
 pnpm --filter @morphjs/playground dev
 ```
 
-Visit `http://localhost:5174/` to see the playground in action.
+Visit `http://localhost:5173/` to see the playground in action.
 
 ---
 
-## <img src=".github/assets/License.png" width="32" height="32" align="center" /> License
+## 📄 License
 
 [MIT](LICENSE) © MorphJS Contributors

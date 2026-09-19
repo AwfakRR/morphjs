@@ -4,7 +4,8 @@ import { resolve } from "path";
 export default defineConfig({
   resolve: {
     alias: {
-      morphjs: resolve(__dirname, "../../packages/core/src"),
+      'morph-stripped': resolve(__dirname, '../../packages/morph-stripped/src/index.ts'),
+      morphjs: resolve(__dirname, '../../packages/core/src/index.ts'),
     },
   },
   server: {

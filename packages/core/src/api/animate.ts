@@ -8,6 +8,7 @@ import { animationEvents } from '../events';
 export interface AnimateOptions extends MorphAnimationOptions {
   spring?: boolean | MorphSpringOptions;
   adapter?: string;
+  engine?: 'motion' | 'anime' | 'gsap' | string;
 }
 
 export type AnimateArg = number | AnimateOptions;
@@ -72,6 +73,7 @@ export function animate(
 
   const adapter = resolveAdapter({
     adapter: opts.adapter,
+    engine: opts.engine,
     spring: springOpts,
   });
 

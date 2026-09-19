@@ -1,29 +1,48 @@
 import type { MorphControls, MorphSpringOptions } from './types';
 
-const cache: any = {};
-const load = (name: string, fn: () => Promise<any>) => () => cache[name] || (cache[name] = fn().then((m: any) => cache[name] = m));
+const load = (fn: () => Promise<any>) => {
+  let p: Promise<any>;
+  return () => (p ||= fn());
+};
 
-export const loadMotion = load('m', () => import('motion'));
-export const loadAnime = load('a', () => import('animejs'));
-export const loadGsap = load('g', () => Promise.all([
-  import('gsap'), import('gsap/ScrollTrigger').catch(()=>null as any), import('gsap/MorphSVGPlugin').catch(()=>null as any), import('gsap/DrawSVGPlugin').catch(()=>null as any)
+export const loadMotion = load(() => import('motion').then((m: any) => m.animate ? m : m.default || m));
+export const loadAnime = load(() => import('animejs').then((m: any) => m.animate ? m : m.default || m));
+export const loadGsap = load(() => Promise.all([
+  import('gsap'),
+  import('gsap/ScrollTrigger').catch(() => null as any),
+  import('gsap/MorphSVGPlugin').catch(() => null as any),
+  import('gsap/DrawSVGPlugin').catch(() => null as any)
 ]).then(([g, st, msvg, dsvg]) => {
   const gsap = g.gsap || g.default || g;
-  const p = [st?.ScrollTrigger, msvg?.MorphSVGPlugin, dsvg?.DrawSVGPlugin].filter(Boolean);
-  if (p.length) gsap.registerPlugin(...p);
-  return { gsap, ScrollTrigger: p[0], MorphSVGPlugin: p[1], DrawSVGPlugin: p[2] };
+  const plugins = [st?.ScrollTrigger, msvg?.MorphSVGPlugin, dsvg?.DrawSVGPlugin].filter(Boolean);
+  if (plugins.length) gsap.registerPlugin(...plugins);
+  return {
+    gsap,
+    ScrollTrigger: st?.ScrollTrigger || null,
+    MorphSVGPlugin: msvg?.MorphSVGPlugin || null,
+    DrawSVGPlugin: dsvg?.DrawSVGPlugin || null,
+  };
 }));
 
-if (typeof window !== 'undefined') { loadMotion().catch(()=>0); loadAnime().catch(()=>0); loadGsap().catch(()=>0); }
+if (typeof window !== 'undefined') {
+  loadMotion().catch(() => 0);
+  loadAnime().catch(() => 0);
+  loadGsap().catch(() => 0);
+}
 
 export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
   const isA = type === 'a', isG = type === 'g';
   return {
-    play: () => anim.play?.(), pause: () => anim.pause?.(), reverse: () => anim.reverse?.(),
+    play: () => anim.play?.(),
+    pause: () => anim.pause?.(),
+    reverse: () => anim.reverse?.(),
     cancel: () => isG ? anim.kill() : isA ? (anim.pause?.(), anim.seek?.(0)) : anim.cancel?.(),
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => (isG || isA) ? anim.restart?.() : (anim.cancel?.(), anim.play?.()),
-    seek: t => isG ? anim.seek(t) : isA ? anim.seek?.(t * 1000) : (anim.seek ? anim.seek(t) : anim.currentTime = t),
+    seek: (t: number) => isG ? anim.seek(t) : isA ? anim.seek?.(t * 1000) : (anim.seek ? anim.seek(t) : anim.currentTime = t),
+    get duration() {
+      return isG ? (anim.duration?.() ?? 0) : isA ? ((anim.duration || 0) / 1000) : (anim.duration ?? (anim.generator?.duration ?? 0.3));
+    },
     get progress() { return (isG ? anim.progress() : anim.progress) ?? 0; },
     get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : anim.currentTime) ?? 0; },
     get playState() {
@@ -39,16 +58,31 @@ export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
 
 export function createDeferred(ld: () => Promise<any>, exec: (mod: any) => any): MorphControls {
   let r: any, q: any[] = [];
-  const fin = ld().then((m: any) => (r = exec(m), q.forEach(f => f(r)), r.finished));
-  return new Proxy({} as MorphControls, {
-    get: (_, p) => {
-      if (p === 'finished') return fin;
-      if (p === 'then') return fin.then.bind(fin);
-      if (p === 'progress' || p === 'currentTime') return r ? r[p] : 0;
-      if (p === 'playState') return r ? r[p] : 'idle';
-      return (...a: any[]) => r ? r[p]?.(...a) : q.push((c: any) => c[p]?.(...a));
-    }
+  const fin = Promise.resolve(ld()).then((m: any) => {
+    r = exec(m);
+    q.forEach(f => f(r));
+    return r.finished;
   });
+  const fw = (fn: (c: any) => void) => {
+    if (r) fn(r);
+    else q.push(fn);
+  };
+  return {
+    play: () => fw(c => c.play()),
+    pause: () => fw(c => c.pause()),
+    reverse: () => fw(c => c.reverse()),
+    cancel: () => fw(c => c.cancel()),
+    finish: () => fw(c => c.finish()),
+    restart: () => fw(c => c.restart()),
+    seek: (t: number) => fw(c => c.seek?.(t)),
+    get duration() { return r ? r.duration : 0; },
+    get progress() { return r ? r.progress : 0; },
+    get currentTime() { return r ? r.currentTime : 0; },
+    get playState() { return r ? r.playState : 'idle'; },
+    get finished() { return fin; },
+    commitStyles: () => fw(c => c.commitStyles?.()),
+    then: (res, rej) => fin.then(res, rej),
+  };
 }
 
 export function toAnimeOptions(props: Record<string, any>, opt?: any): Record<string, any> {
@@ -100,16 +134,20 @@ export function runSpring(motion: any, tgts: any, kf: any, opt?: MorphSpringOpti
   let c2: any, cx = false;
   const fin = c1.finished.then(() => cx ? undefined : (c2 = wrap(motion.animate(tgts, s2, { ...opt, type: 'spring' }), 'm'), c2.finished));
 
-  return new Proxy({} as MorphControls, {
-    get: (_, p) => {
-      if (p === 'finished') return fin;
-      if (p === 'then') return fin.then.bind(fin);
-      if (p === 'progress') return c2 ? 0.5 + c2.progress * 0.5 : c1.progress * 0.5;
-      if (p === 'currentTime' || p === 'playState') return (c2 || c1)[p];
-      if (p === 'cancel') return () => { cx = true; c1.cancel(); c2?.cancel(); };
-      if (p === 'restart') return () => { cx = false; c1.cancel(); c2?.cancel(); c1.play(); };
-      if (p === 'commitStyles') return () => { c1.commitStyles(); c2?.commitStyles(); };
-      return (...a: any[]) => (c2 || c1)[p]?.(...a);
-    }
-  });
+  return {
+    play: () => (c2 || c1).play(),
+    pause: () => (c2 || c1).pause(),
+    reverse: () => (c2 || c1).reverse(),
+    cancel: () => { cx = true; c1.cancel(); c2?.cancel(); },
+    finish: () => (c2 || c1).finish(),
+    restart: () => { cx = false; c1.cancel(); c2?.cancel(); c1.play(); },
+    seek: (t: number) => (c2 || c1).seek(t),
+    get duration() { return (c1.duration || 0.3) + (c2?.duration || 0.3); },
+    get progress() { return c2 ? 0.5 + c2.progress * 0.5 : c1.progress * 0.5; },
+    get currentTime() { return (c2 || c1).currentTime; },
+    get playState() { return (c2 || c1).playState; },
+    get finished() { return fin; },
+    commitStyles: () => { c1.commitStyles(); c2?.commitStyles(); },
+    then: (res, rej) => fin.then(res, rej),
+  };
 }
