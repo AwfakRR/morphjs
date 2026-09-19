@@ -10,11 +10,12 @@ export default defineConfig({
     }),
   ],
   build: {
+    minify: true,
     lib: {
       entry: resolve(__dirname, 'src/index.ts'),
-      name: 'MorphJS',
-      fileName: 'morphjs',
-      formats: ['es', 'cjs', 'umd'],
+      name: 'MorphStripped',
+      formats: ['es', 'umd'],
+      fileName: (format) => `index.${format === 'es' ? 'js' : 'cjs'}`,
     },
     rollupOptions: {
       external: [

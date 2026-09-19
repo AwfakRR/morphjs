@@ -2,14 +2,14 @@
   "name": "morphjs",
   "version": "0.1.0",
   "type": "module",
-  "main": "dist/morphjs.cjs",
-  "module": "dist/morphjs.js",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/morphjs.js",
-      "require": "./dist/morphjs.cjs"
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
   "files": [

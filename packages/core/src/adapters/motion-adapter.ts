@@ -85,81 +85,29 @@ export const motionAdapter: IAnimationAdapter = {
 
   spring: (targets: any, keyframes: any, options?: MorphSpringOptions) => {
     const motion = getMotionSync();
-
-    // Support multi-keyframe arrays in springs (e.g. [0, -70, 0] or [1, 1.2, 1])
-    let hasSequence = false;
-    const step1: Record<string, any> = {};
-    const step2: Record<string, any> = {};
-
+    let seq = false, s1: any = {}, s2: any = {};
     for (const [k, v] of Object.entries(keyframes)) {
-      if (Array.isArray(v) && v.length > 2) {
-        hasSequence = true;
-        step1[k] = v[1]; // peak target
-        step2[k] = v[v.length - 1]; // return target
-      } else {
-        step1[k] = v;
+      if (Array.isArray(v) && v.length > 2) { seq = true; s1[k] = v[1]; s2[k] = v[v.length - 1]; }
+      else s1[k] = v;
+    }
+    if (!seq) return wrapMotionControls(motion.animate(targets, keyframes, { ...options, type: 'spring' } as any));
+
+    const c1 = wrapMotionControls(motion.animate(targets, s1, { ...options, type: 'spring' } as any));
+    let c2: any, cx = false;
+    const fin = c1.finished.then(() => cx ? undefined : (c2 = wrapMotionControls(motion.animate(targets, s2, { ...options, type: 'spring' } as any)), c2.finished));
+
+    return new Proxy({} as MorphControls, {
+      get: (_, p) => {
+        if (p === 'finished') return fin;
+        if (p === 'then') return fin.then.bind(fin);
+        if (p === 'progress') return c2 ? 0.5 + c2.progress * 0.5 : c1.progress * 0.5;
+        if (p === 'currentTime' || p === 'playState') return (c2 || c1)[p];
+        if (p === 'cancel') return () => { cx = true; c1.cancel(); c2?.cancel(); };
+        if (p === 'restart') return () => { cx = false; c1.cancel(); c2?.cancel(); c1.play(); };
+        if (p === 'commitStyles') return () => { c1.commitStyles(); c2?.commitStyles(); };
+        return (...a: any[]) => (c2 || c1)[p]?.(...a);
       }
-    }
-
-    if (hasSequence) {
-      const controls1 = wrapMotionControls(motion.animate(targets, step1, { ...options, type: 'spring' } as any));
-      let controls2: MorphControls | null = null;
-      let isCancelled = false;
-
-      const finished = controls1.finished.then(() => {
-        if (isCancelled) return;
-        controls2 = wrapMotionControls(motion.animate(targets, step2, { ...options, type: 'spring' } as any));
-        return controls2.finished;
-      });
-
-      return {
-        play: () => (controls2 || controls1).play(),
-        pause: () => (controls2 || controls1).pause(),
-        cancel: () => {
-          isCancelled = true;
-          controls1.cancel();
-          if (controls2) controls2.cancel();
-        },
-        finish: () => {
-          if (controls2) controls2.finish();
-          else controls1.finish();
-        },
-        reverse: () => (controls2 || controls1).reverse(),
-        restart: () => {
-          isCancelled = false;
-          controls1.cancel();
-          if (controls2) controls2.cancel();
-          controls1.play();
-        },
-        seek: (time: number) => {
-          if (controls2?.seek) controls2.seek(time);
-          else if (controls1?.seek) controls1.seek(time);
-        },
-        get progress() {
-          return controls2 ? 0.5 + controls2.progress * 0.5 : controls1.progress * 0.5;
-        },
-        get currentTime() {
-          return controls2 ? controls2.currentTime : controls1.currentTime;
-        },
-        get finished() {
-          return finished;
-        },
-        get playState() {
-          return controls2 ? controls2.playState : controls1.playState;
-        },
-        commitStyles: () => {
-          controls1.commitStyles();
-          controls2?.commitStyles();
-        },
-        then: (onfulfilled, onrejected) => finished.then(onfulfilled, onrejected),
-      };
-    }
-
-    const animation = motion.animate(targets, keyframes, {
-      ...options,
-      type: 'spring'
-    } as any);
-    return wrapMotionControls(animation);
+    });
   },
 
   scroll(animationOrCallback: MorphControls | ((progress: number) => void), options?: MorphScrollOptions): MorphControls {
