@@ -1,25 +1,28 @@
-# 🪄 MorphJS
-
 <div align="center">
 
+<img src=".github/assets/MorphJS.png" alt="MorphJS Logo" width="160" />
+
+# MorphJS
+
 **The shortest, easiest animation engine for modern web apps.**  
-*Combines the GPU spring/gesture power of **Motion.js** with the timeline/SVG wizardry of **Anime.js v4**.*
+*Combines the GPU spring/gesture power of **Motion.js**, the lightweight timeline/SVG magic of **Anime.js v4**, and the heavy-duty specialist muscle of **GSAP v3**.*
 
 [![Version](https://img.shields.io/npm/v/morphjs?style=flat-square&color=6366f1)](https://www.npmjs.com/package/morphjs)
-[![Bundle Size](https://img.shields.io/badge/bundle%20size-2.91%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morphjs)
+[![Bundle Size](https://img.shields.io/badge/bundle%20size-4.61%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morphjs)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
 </div>
 
 ---
 
-## 💡 Why MorphJS?
+## <img src=".github/assets/Why.png" width="32" height="32" align="center" /> Why MorphJS?
 
 Modern web animation is fragmented:
-- **Motion.js** is the gold standard for springs, gesture physics, and WAAPI scroll tracking, but its vanilla JS library can be verbose.
-- **Anime.js** is legendary for timelines, SVG morphing, and staggering, but relies heavily on rAF (requestAnimationFrame) without WAAPI/GPU enhancements.
+- **Motion.js** is unmatched for physical springs and WAAPI compositor transforms, but vanilla JS usage can be verbose.
+- **Anime.js v4** is legendary for compact UI timelines, SVG drawing, and staggers, but lacks native spring physics.
+- **GSAP v3** is the industry powerhouse for ScrollTrigger pinning and complex vertex morphing, but carries a heavy ~35–45 KB bundle and non-standard commercial licensing.
 
-**MorphJS** merges both engines into the absolute shortest, most unified API available.
+**MorphJS** unites all three into the absolute shortest, most unified animation API on the web.
 
 | Engine | Typical Tween Syntax | Keystrokes |
 |:---|:---|:---:|
@@ -30,37 +33,37 @@ Modern web animation is fragmented:
 
 ---
 
-## 📦 Packages & Flavors
+## <img src=".github/assets/Package.png" width="32" height="32" align="center" /> Packages & Flavors
 
-MorphJS comes in multiple packages tailored to your architecture:
+MorphJS comes in two editions tailored to your architecture:
 
-1. **`morph-stripped`** (*Recommended!*)
-   The "Ponytail" optimized edition. Combines both native engines (`motion` and `animejs`) directly. Zero boilerplate, zero adapter registries, zero global state managers.
-   - **Size:** `10.01 KB raw` / `2.91 KB gzip`
-2. **`morphjs`** (Core)
-   The full-featured extensible version with dynamic adapter registries, global state tracking, and event lifecycle buses.
-   - **Size:** `24.24 KB raw` / `6.63 KB gzip`
+1. **`morph-stripped`** (*Recommended*)  
+   The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
+   - **Size:** `17.38 KB raw` / `4.61 KB gzip`
+2. **`morphjs`** (Core)  
+   The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
+   - **Size:** `31.44 KB raw` / `8.02 KB gzip`
 
 ### Framework Bindings
 - **`@morphjs/react`**: `useAnimate`, `useMorphSpring`, `useGesture`, `<MorphPresence>`
 - **`@morphjs/vue`**: `useMorph`, `useMorphSpring`, `v-morph`, `<MorphTransition>`
 - **`@morphjs/svelte`**: `morphAction`, `gesture`, `morphTransition`, `springStore`
-- **`@morphjs/tanstack`**: Virtual/Table routing and transitions
+- **`@morphjs/tanstack`**: Route transitions, table row reordering, virtual list animations
 
 ---
 
-## 🚀 Quick Start (API)
+## <img src=".github/assets/QuickStart.png" width="32" height="32" align="center" /> Quick Start (API)
 
 ```ts
 import morph, { timeline, spring, stagger, scroll, gesture, svg } from 'morph-stripped';
 
-// 1. One-Liner (Fast CSS Tween)
+// 1. One-Liner (Ultra-fast WAAPI CSS Tween via Motion)
 morph('.box', { x: 100, rotate: 180 }, 0.5);
 
-// 2. Spring Physics (Chained peaks supported!)
+// 2. Spring Physics (Analytical spring solver via Motion)
 spring('.ball', { scale: [1, 1.2, 1] }, { stiffness: 400, damping: 10 });
 
-// 3. Timelines (Fluent Chaining)
+// 3. Timelines (Default lightweight Anime.js v4 timeline)
 const tl = timeline({ autoplay: true })
   .add('.header', { opacity: 1, y: 0 }, 0.5)
   .add('.card', { scale: 1 }, '-=0.2');
@@ -70,46 +73,66 @@ morph('.grid-item', { scale: 1 }, {
   delay: stagger(0.1, { from: 'center' })
 });
 
-// 5. Scroll Tracking
-scroll(
-  (progress) => console.log(progress), 
-  { target: document.querySelector('.container') }
-);
+// 5. Scroll Tracking (Lightweight WAAPI or GSAP ScrollTrigger)
+// Basic scroll tracking via Motion.js:
+scroll((progress) => console.log(progress));
 
-// 6. Gestures (Hover, Press, Drag)
+// Advanced ScrollTrigger (auto-activated when pinning or scrubbing):
+scroll('.parallax', { pin: true, scrub: true });
+
+// 6. Interactive Gestures (Drag, Hover, Press via Pointer Events + Motion)
 gesture('.draggable', {
   drag: true,
   hover: true,
   onDrag: (e, info) => console.log(info.offset.x)
 });
 
-// 7. SVG Draw & Morph
+// 7. SVG Draw & Morph (Anime.js default, GSAP MorphSVG for complex shapes)
 svg.draw('.my-path', { duration: 1.5 });
 svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
 ```
 
 ---
 
-## 💻 Interactive Playground
+## <img src=".github/assets/Architecture.png" width="32" height="32" align="center" /> Architecture: Balanced & Agnostic
 
-To test all the capabilities of MorphJS (Gestures, Springs, Timelines, Staggers, SVGs, and Framework integrations), run the local playground:
+No single engine dominates. MorphJS automatically routes each animation to the engine best equipped for the job:
+
+```
+┌────────────────────────────────────────────────────────┐
+│                  MorphJS Unified API                   │
+│   animate() · spring() · timeline() · scroll()         │
+│   gesture() · stagger() · svg.draw/morph/attr          │
+└───────────┬────────────────┬───────────────────────────┘
+            │                │
+      ┌─────▼──────┐   ┌─────▼──────┐   ┌────────────┐
+      │  Motion.js │   │ Anime.js v4│   │  GSAP v3   │  ← All lazy-loaded
+      │   (WAAPI)  │   │   (rAF)    │   │  (Special) │
+      └────────────┘   └────────────┘   └────────────┘
+      • Springs        • Default TL     • ScrollTrigger (pin/scrub)
+      • Gestures       • SVG Draw/Attr  • MorphSVG (mismatched points)
+      • CSS Tweens     • Staggers       • Pro Nested Timelines
+      • Basic Scroll   • 100% MIT       • Opt-in ({ engine: 'gsap' })
+```
+
+* **All engines are lazy-loaded**: If your project never uses GSAP features, **0 bytes** of GSAP are bundled or downloaded.
+* **Seamless Fallbacks**: If an optional peer dependency is omitted, MorphJS gracefully degrades to the next available engine.
+
+---
+
+## <img src=".github/assets/Playground.png" width="32" height="32" align="center" /> Interactive Playground
+
+Test every capability live (Gestures, Springs, Timelines, Staggers, SVGs, and ScrollTrigger):
 
 ```bash
 pnpm install
 pnpm --filter @morphjs/playground dev
 ```
 
-Visit `http://localhost:5174/` to see the engine in action.
+Visit `http://localhost:5174/` to see the playground in action.
 
 ---
 
-## 🏗 Architecture
+## <img src=".github/assets/License.png" width="32" height="32" align="center" /> License
 
-MorphJS intelligently routes properties to the most optimal native engine under the hood:
-- **Motion.js** handles: Tweens, Springs, Scroll, Gestures.
-- **Anime.js** handles: Timelines, Staggering, SVG Path Morphing, SVG Stroke Drawing.
-
-All of this happens invisibly behind the single `morph` API.
-
-## License
-MIT
+[MIT](LICENSE) © MorphJS Contributors
