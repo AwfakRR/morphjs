@@ -37,6 +37,7 @@ export interface MorphStaggerOptions {
 
 export interface TimelineOptions extends MorphAnimationOptions {
   defaults?: MorphAnimationOptions;
+  engine?: 'anime' | 'gsap';
 }
 
 export interface MorphControls {
@@ -67,6 +68,9 @@ export interface MorphScrollOptions {
   container?: Element;
   axis?: 'x' | 'y';
   offset?: [string | number, string | number];
+  pin?: boolean | string | Element;
+  scrub?: boolean | number;
+  engine?: 'motion' | 'gsap';
 }
 
 export interface MorphGestureOptions {
@@ -84,4 +88,5 @@ export interface MorphGestureOptions {
 
 export interface MorphSvgOptions extends MorphAnimationOptions {
   morphPrecision?: number;
+  engine?: 'anime' | 'gsap';
 }

@@ -61,12 +61,12 @@ adapterRegistry.register({
   capabilities: ['tween', 'timeline', 'stagger', 'svg'],
 });
 
-// GSAP — default for timeline, scroll, svg (best-in-class for these)
+// GSAP — specialist engine for advanced ScrollTrigger, MorphSVG, pro timelines
 import { gsapAdapter } from './adapters/gsap-adapter';
 adapterRegistry.register({
   name: 'gsap',
   adapter: gsapAdapter,
-  priority: 20,
+  priority: 5,
   capabilities: ['tween', 'timeline', 'stagger', 'scroll', 'svg'],
 });
 

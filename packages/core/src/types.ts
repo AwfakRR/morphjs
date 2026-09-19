@@ -86,6 +86,8 @@ export interface MorphScrollOptions {
   container?: Element;
   axis?: 'x' | 'y';
   offset?: [string | number, string | number]; // e.g. ['start end', 'end start']
+  pin?: boolean | string | Element;
+  scrub?: boolean | number;
 }
 
 // Gesture options
