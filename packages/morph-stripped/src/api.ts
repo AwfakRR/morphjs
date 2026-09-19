@@ -13,9 +13,12 @@ import type {
 import {
   loadMotion,
   loadAnime,
+  loadGsap,
   wrapControls,
+  wrapGsapControls,
   createDeferred,
   toAnimeOptions,
+  toGsapOptions,
   runSpring,
 } from './engine';
 
@@ -23,31 +26,45 @@ export type AnimateArg = MorphAnimationOptions | number;
 
 /**
  * Animate targets with CSS or SVG properties.
- * Supports duration shorthand (e.g. animate('.box', { x: 100 }, 0.5)).
+ * Routes to the best engine automatically:
+ *   - Motion.js for CSS tweens (WAAPI, compositor thread)
+ *   - Anime.js for repeat/loop animations
+ *   - GSAP when explicitly requested via engine option
  */
 export function animate(
   targets: MorphTargets,
   properties: Record<string, any>,
   options?: AnimateArg
 ): MorphControls {
-  const opts: MorphAnimationOptions = typeof options === 'number' ? { duration: options } : options || {};
+  const opts: any = typeof options === 'number' ? { duration: options } : options || {};
 
-  // If SVG path morphing, SVG stroke drawing, or explicit repeat, use Anime.js v4
-  if ('d' in properties || 'strokeDashoffset' in properties || opts.repeat !== undefined) {
+  // Explicit engine override
+  if (opts.engine === 'gsap') {
+    return createDeferred(loadGsap, ({ gsap }) => {
+      return wrapGsapControls(gsap.to(targets, toGsapOptions(properties, opts)));
+    });
+  }
+  if (opts.engine === 'anime') {
     return createDeferred(loadAnime, (anime) => {
-      const animeOpts = toAnimeOptions(properties, opts);
-      return wrapControls(anime.animate(targets, animeOpts), true);
+      return wrapControls(anime.animate(targets, toAnimeOptions(properties, opts)), true);
     });
   }
 
-  // Otherwise, default to Motion for fast CSS/transform tweens
+  // SVG path morphing or stroke drawing → Anime.js (fallback; SVG functions use GSAP directly)
+  if ('d' in properties || 'strokeDashoffset' in properties || opts.repeat !== undefined) {
+    return createDeferred(loadAnime, (anime) => {
+      return wrapControls(anime.animate(targets, toAnimeOptions(properties, opts)), true);
+    });
+  }
+
+  // Default: Motion.js for CSS/transform tweens (WAAPI)
   return createDeferred(loadMotion, (motion) => {
     return wrapControls(motion.animate(targets, properties, opts as any), false);
   });
 }
 
 /**
- * Animate with spring physics.
+ * Animate with spring physics. Always uses Motion.js (analytical spring solver).
  */
 export function spring(
   targets: MorphTargets,
@@ -61,12 +78,35 @@ export function spring(
 
 /**
  * Create a sequence timeline with fluent .add() chaining.
+ * Default engine: GSAP (industry-best timeline with labels, position params, nesting).
+ * Fallback: Anime.js if GSAP unavailable.
  */
 export function timeline(options?: TimelineOptions): MorphTimeline {
   const segments: Array<{ targets: any; props: any; offset?: any }> = [];
-  let animeTl: any = null;
+  let realTl: any = null;
+  let engine: 'gsap' | 'anime' = 'gsap';
 
-  const build = (anime: any) => {
+  const buildGsap = ({ gsap }: any) => {
+    const defaults: Record<string, any> = {};
+    if (options?.defaults?.duration !== undefined) defaults.duration = options.defaults.duration;
+    if (options?.defaults?.ease !== undefined) {
+      const e = options.defaults.ease;
+      defaults.ease = typeof e === 'string' ? e : e;
+    }
+
+    const tl = gsap.timeline({
+      paused: options?.autoplay === false,
+      defaults: Object.keys(defaults).length ? defaults : undefined,
+    });
+
+    for (const s of segments) {
+      tl.to(s.targets, toGsapOptions(s.props), s.offset);
+    }
+    realTl = tl;
+    return wrapGsapControls(tl);
+  };
+
+  const buildAnime = (anime: any) => {
     const tl = anime.createTimeline({
       autoplay: options?.autoplay ?? true,
       defaults: options?.defaults ? toAnimeOptions(options.defaults) : undefined,
@@ -74,31 +114,47 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     for (const s of segments) {
       tl.add(s.targets, toAnimeOptions(s.props), s.offset);
     }
-    return tl;
+    realTl = tl;
+    return wrapControls(tl, true);
   };
 
-  const deferred = createDeferred(loadAnime, (anime) => {
-    animeTl = build(anime);
-    return wrapControls(animeTl, true);
-  });
+  // Try GSAP first, fall back to Anime.js
+  const deferred = createDeferred(
+    () => loadGsap().catch(() => {
+      engine = 'anime';
+      return loadAnime();
+    }),
+    (mod) => engine === 'gsap' ? buildGsap(mod) : buildAnime(mod)
+  );
 
   const tlObject: MorphTimeline = Object.assign(deferred, {
     add(targets: any, props: any, offset?: any) {
-      if (animeTl) {
-        animeTl.add(targets, toAnimeOptions(props), offset);
+      if (realTl) {
+        if (engine === 'gsap') {
+          realTl.to(targets, toGsapOptions(props), offset);
+        } else {
+          realTl.add(targets, toAnimeOptions(props), offset);
+        }
       } else {
         segments.push({ targets, props, offset });
       }
       return tlObject;
     },
-    label(_name: string, _offset?: any) {
+    label(name: string, offset?: any) {
+      if (realTl && engine === 'gsap') {
+        realTl.addLabel(name, offset);
+      }
       return tlObject;
     },
-    addPause(_offset?: any, _cb?: any) {
+    addPause(offset?: any, cb?: any) {
+      if (realTl && engine === 'gsap') {
+        realTl.addPause(offset, cb);
+      }
       return tlObject;
     },
     get duration() {
-      return animeTl ? (animeTl.duration || 0) / 1000 : 0;
+      if (!realTl) return 0;
+      return engine === 'gsap' ? (realTl.duration() || 0) : (realTl.duration || 0) / 1000;
     },
   });
 
@@ -134,38 +190,87 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
 
 /**
  * Scroll-linked animation or scroll observer.
+ * Default engine: GSAP ScrollTrigger (pinning, scrub, velocity).
+ * Fallback: Motion.js scroll tracking.
  */
 export function scroll(
   animationOrCallback: MorphControls | ((progress: number) => void),
   options?: MorphScrollOptions
 ): MorphControls {
-  return createDeferred(loadMotion, (motion) => {
-    const res = motion.scroll(animationOrCallback, options);
-    if (typeof animationOrCallback === 'function') {
-      return {
-        play: () => {},
-        pause: () => {},
-        reverse: () => {},
-        cancel: () => {
-          if (typeof res === 'function') res();
-        },
-        finish: () => {},
-        restart: () => {},
-        seek: () => {},
-        progress: 0,
-        currentTime: 0,
-        playState: 'running',
-        finished: Promise.resolve(),
-        then: (fn: any) => Promise.resolve().then(fn),
-        commitStyles: () => {},
-      };
+  // Try GSAP ScrollTrigger first
+  return createDeferred(
+    () => loadGsap().catch(() => loadMotion()),
+    (mod) => {
+      // GSAP path
+      if (mod.gsap && mod.ScrollTrigger) {
+        const { gsap, ScrollTrigger } = mod;
+
+        if (typeof animationOrCallback === 'function') {
+          const trigger = ScrollTrigger.create({
+            trigger: options?.target || document.documentElement,
+            scroller: options?.container,
+            start: 'top top',
+            end: 'bottom bottom',
+            onUpdate: (self: any) => animationOrCallback(self.progress),
+          });
+
+          return {
+            play: () => {},
+            pause: () => {},
+            reverse: () => {},
+            cancel: () => trigger.kill(),
+            finish: () => {},
+            restart: () => {},
+            seek: () => {},
+            progress: 0,
+            currentTime: 0,
+            playState: 'running' as const,
+            finished: Promise.resolve(),
+            then: (fn: any) => Promise.resolve().then(fn),
+            commitStyles: () => {},
+          };
+        }
+
+        // Scrub-linked animation
+        return wrapGsapControls(gsap.to({}, {
+          scrollTrigger: {
+            trigger: options?.target || document.documentElement,
+            scroller: options?.container,
+            scrub: true,
+            start: 'top top',
+            end: 'bottom bottom',
+          },
+        }));
+      }
+
+      // Motion.js fallback
+      const motion = mod;
+      const res = motion.scroll(animationOrCallback, options);
+      if (typeof animationOrCallback === 'function') {
+        return {
+          play: () => {},
+          pause: () => {},
+          reverse: () => {},
+          cancel: () => { if (typeof res === 'function') res(); },
+          finish: () => {},
+          restart: () => {},
+          seek: () => {},
+          progress: 0,
+          currentTime: 0,
+          playState: 'running' as const,
+          finished: Promise.resolve(),
+          then: (fn: any) => Promise.resolve().then(fn),
+          commitStyles: () => {},
+        };
+      }
+      return animationOrCallback;
     }
-    return animationOrCallback;
-  });
+  );
 }
 
 /**
  * Gesture bindings (drag, hover, press). Returns cleanup function.
+ * Uses Motion.js for hover/press, native pointer events for drag.
  */
 export function gesture(
   targets: MorphTargets,
@@ -204,7 +309,7 @@ export function gesture(
   if (options?.drag) {
     for (const el of elements) {
       if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
-      
+
       let active = false;
       let ox = 0, oy = 0, px = 0, py = 0;
 
@@ -252,8 +357,14 @@ export function gesture(
 
 /**
  * SVG animations (stroke drawing, morphing, attribute animation).
+ * Default engine: GSAP (MorphSVGPlugin, DrawSVGPlugin).
+ * Fallback: Anime.js if GSAP unavailable.
  */
 export const svg = {
+  /**
+   * SVG stroke drawing (line draw effect).
+   * Uses GSAP DrawSVGPlugin if available, falls back to Anime.js strokeDashoffset.
+   */
   draw(targets: MorphTargets, options?: MorphSvgOptions): MorphControls {
     const isReverse = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
     const elements: any[] =
@@ -272,20 +383,81 @@ export const svg = {
       }
     });
 
-    const from = isReverse ? 0 : len;
-    const to = isReverse ? len : 0;
+    // Try GSAP DrawSVGPlugin first
+    return createDeferred(
+      () => loadGsap().catch(() => loadAnime()),
+      (mod) => {
+        if (mod.gsap && mod.DrawSVGPlugin) {
+          const { gsap } = mod;
+          const vars = toGsapOptions({}, options);
+          if (isReverse) {
+            return wrapGsapControls(gsap.to(targets, { drawSVG: 0, ...vars }));
+          }
+          return wrapGsapControls(gsap.from(targets, { drawSVG: 0, ...vars }));
+        }
 
-    return animate(elements, { strokeDashoffset: [from, to] }, options);
+        // Anime.js fallback
+        const anime = mod;
+        const from = isReverse ? 0 : len;
+        const to = isReverse ? len : 0;
+        return wrapControls(
+          anime.animate(elements, toAnimeOptions({ strokeDashoffset: [from, to] }, options)),
+          true
+        );
+      }
+    );
   },
 
+  /**
+   * SVG path morphing.
+   * Uses GSAP MorphSVGPlugin if available (handles mismatched points), falls back to Anime.js.
+   */
   morph(targets: MorphTargets, options: MorphSvgOptions & { d: [string, string] }): MorphControls {
     const { d, ...animOpts } = options;
-    return animate(targets, { d }, animOpts);
+
+    // Try GSAP MorphSVGPlugin first
+    return createDeferred(
+      () => loadGsap().catch(() => loadAnime()),
+      (mod) => {
+        if (mod.gsap && mod.MorphSVGPlugin) {
+          const { gsap } = mod;
+          const vars = toGsapOptions({}, animOpts);
+          vars.morphSVG = { shape: d[1] };
+          return wrapGsapControls(gsap.to(targets, vars));
+        }
+
+        // Anime.js fallback
+        const anime = mod;
+        return wrapControls(
+          anime.animate(targets, toAnimeOptions({ d }, animOpts)),
+          true
+        );
+      }
+    );
   },
 
+  /**
+   * Animate arbitrary SVG attributes.
+   * Uses GSAP's built-in attr plugin, falls back to Anime.js.
+   */
   attr(targets: MorphTargets, attributes: Record<string, any>, options?: MorphAnimationOptions): MorphControls {
-    return createDeferred(loadAnime, (anime) => {
-      return wrapControls(anime.animate(targets, toAnimeOptions(attributes, options)), true);
-    });
+    return createDeferred(
+      () => loadGsap().catch(() => loadAnime()),
+      (mod) => {
+        if (mod.gsap) {
+          const { gsap } = mod;
+          const vars = toGsapOptions({}, options);
+          vars.attr = attributes;
+          return wrapGsapControls(gsap.to(targets, vars));
+        }
+
+        // Anime.js fallback
+        const anime = mod;
+        return wrapControls(
+          anime.animate(targets, toAnimeOptions(attributes, options)),
+          true
+        );
+      }
+    );
   },
 };

@@ -6,6 +6,9 @@ let motionPromise: Promise<any> | null = null;
 let animeModule: any = null;
 let animePromise: Promise<any> | null = null;
 
+let gsapModule: any = null;
+let gsapPromise: Promise<any> | null = null;
+
 export function loadMotion(): Promise<any> {
   if (motionModule) return Promise.resolve(motionModule);
   if (!motionPromise) {
@@ -22,9 +25,38 @@ export function loadAnime(): Promise<any> {
   return animePromise;
 }
 
+export function loadGsap(): Promise<any> {
+  if (gsapModule) return Promise.resolve(gsapModule);
+  if (!gsapPromise) {
+    gsapPromise = Promise.all([
+      import('gsap'),
+      import('gsap/ScrollTrigger').catch(() => null),
+      import('gsap/MorphSVGPlugin').catch(() => null),
+      import('gsap/DrawSVGPlugin').catch(() => null),
+    ]).then(([gsapPkg, stPkg, morphPkg, drawPkg]) => {
+      const gsap = gsapPkg.gsap || gsapPkg.default || gsapPkg;
+      const plugins: any[] = [];
+      if (stPkg?.ScrollTrigger) plugins.push(stPkg.ScrollTrigger);
+      if (morphPkg?.MorphSVGPlugin) plugins.push(morphPkg.MorphSVGPlugin);
+      if (drawPkg?.DrawSVGPlugin) plugins.push(drawPkg.DrawSVGPlugin);
+      if (plugins.length) gsap.registerPlugin(...plugins);
+
+      gsapModule = {
+        gsap,
+        ScrollTrigger: stPkg?.ScrollTrigger || null,
+        MorphSVGPlugin: morphPkg?.MorphSVGPlugin || null,
+        DrawSVGPlugin: drawPkg?.DrawSVGPlugin || null,
+      };
+      return gsapModule;
+    });
+  }
+  return gsapPromise;
+}
+
 if (typeof window !== 'undefined') {
   loadMotion().catch(() => {});
   loadAnime().catch(() => {});
+  loadGsap().catch(() => {});
 }
 
 /**
@@ -82,6 +114,39 @@ export function wrapControls(anim: any, isAnime = false): MorphControls {
     },
     commitStyles: () => anim.commitStyles?.(),
     then: (res, rej) => Promise.resolve(anim.finished || anim).then(res, rej),
+  };
+}
+
+/**
+ * Wrap a GSAP tween/timeline into MorphControls.
+ * GSAP natively uses seconds and 0-1 progress — zero conversion needed.
+ */
+export function wrapGsapControls(tween: any): MorphControls {
+  return {
+    play: () => tween.play(),
+    pause: () => tween.pause(),
+    reverse: () => tween.reverse(),
+    restart: () => tween.restart(),
+    cancel: () => tween.kill(),
+    finish: () => tween.progress(1),
+    seek: (t: number) => tween.seek(t),
+    get progress() {
+      return tween.progress() ?? 0;
+    },
+    get currentTime() {
+      return tween.time() ?? 0;
+    },
+    get finished() {
+      return tween.then ? tween.then() : Promise.resolve();
+    },
+    get playState() {
+      if (!tween.isActive() && tween.progress() >= 1) return 'finished' as const;
+      if (tween.paused()) return 'paused' as const;
+      if (tween.isActive()) return 'running' as const;
+      return 'idle' as const;
+    },
+    commitStyles: () => {},
+    then: (res, rej) => (tween.then ? tween.then() : Promise.resolve()).then(res, rej),
   };
 }
 
@@ -153,6 +218,40 @@ export function toAnimeOptions(properties: Record<string, any>, options?: any): 
   if (options.onComplete) result.onComplete = options.onComplete;
 
   return result;
+}
+
+/** Map MorphJS easing names → GSAP easing strings */
+const gsapEasingMap: Record<string, string> = {
+  linear: 'none',
+  easeIn: 'power1.in', easeOut: 'power1.out', easeInOut: 'power1.inOut',
+  easeInQuad: 'power2.in', easeOutQuad: 'power2.out', easeInOutQuad: 'power2.inOut',
+  easeInCubic: 'power3.in', easeOutCubic: 'power3.out', easeInOutCubic: 'power3.inOut',
+  easeInQuart: 'power4.in', easeOutQuart: 'power4.out', easeInOutQuart: 'power4.inOut',
+  easeOutElastic: 'elastic.out(1, 0.3)', easeOutBounce: 'bounce.out',
+  easeInBack: 'back.in(1.7)', easeOutBack: 'back.out(1.7)',
+};
+
+/**
+ * Convert standard Morph options to GSAP vars.
+ * GSAP uses seconds natively — zero conversion overhead.
+ */
+export function toGsapOptions(properties: Record<string, any>, options?: any): Record<string, any> {
+  const vars: Record<string, any> = { ...properties };
+  if (!options) return vars;
+
+  if (options.duration !== undefined) vars.duration = options.duration;
+  if (options.delay !== undefined) vars.delay = options.delay;
+  if (options.ease !== undefined) {
+    const e = options.ease;
+    vars.ease = typeof e === 'string' && gsapEasingMap[e] ? gsapEasingMap[e] : e;
+  }
+  if (options.repeat !== undefined) vars.repeat = options.repeat === Infinity ? -1 : options.repeat;
+  if (options.direction === 'alternate' || options.direction === 'alternate-reverse') vars.yoyo = true;
+  if (options.autoplay === false) vars.paused = true;
+  if (options.onStart) vars.onStart = options.onStart;
+  if (options.onComplete) vars.onComplete = options.onComplete;
+
+  return vars;
 }
 
 /**

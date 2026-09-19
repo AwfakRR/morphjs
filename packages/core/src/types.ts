@@ -115,7 +115,7 @@ export interface MorphSvgOptions extends MorphAnimationOptions {
 }
 
 // Adapter engine identifier
-export type AdapterType = 'motion' | 'anime' | string; // string allows custom plugin adapters
+export type AdapterType = 'motion' | 'anime' | 'gsap' | string;
 
 // Animation lifecycle events
 export type AnimationEventType = 'start' | 'update' | 'complete' | 'cancel' | 'pause' | 'resume';

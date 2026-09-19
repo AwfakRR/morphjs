@@ -25,7 +25,8 @@
   },
   "peerDependencies": {
     "animejs": ">=4.0.0",
-    "motion": ">=11.0.0"
+    "motion": ">=11.0.0",
+    "gsap": ">=3.12.0"
   },
   "peerDependenciesMeta": {
     "animejs": {
@@ -33,11 +34,15 @@
     },
     "motion": {
       "optional": true
+    },
+    "gsap": {
+      "optional": true
     }
   },
   "devDependencies": {
     "animejs": ">=4.0.0",
     "motion": ">=11.0.0",
+    "gsap": ">=3.12.0",
     "vite": "~6.0.0",
     "vite-plugin-dts": "^4.2.1"
   }

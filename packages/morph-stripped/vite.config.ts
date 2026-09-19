@@ -20,14 +20,17 @@ export default defineConfig({
       external: [
         'motion',
         'animejs',
+        'gsap',
         /^motion\/.*/,
         /^animejs\/.*/,
+        /^gsap\/.*/,
       ],
       output: {
         exports: 'named',
         globals: {
           motion: 'Motion',
           animejs: 'anime',
+          gsap: 'gsap',
         },
       },
     },

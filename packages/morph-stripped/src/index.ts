@@ -11,6 +11,7 @@ import {
 import type { MorphTargets, MorphControls } from './types';
 
 export { animate, spring, timeline, stagger, scroll, gesture, svg };
+export { loadGsap } from './engine';
 export type * from './types';
 
 export interface MorphCallable {

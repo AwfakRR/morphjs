@@ -22,12 +22,13 @@ export { configure, getConfig } from './router';
 export { adapterRegistry } from './adapters/adapter';
 export { stateManager } from './state';
 export { animationEvents } from './events';
-export { resolveEasing, registerEasing, toMotionEasing, toAnimeEasing } from './easing/easing';
+export { resolveEasing, registerEasing, toMotionEasing, toAnimeEasing, toGsapEasing } from './easing/easing';
 export { resolveTargets } from './utils/targets';
 
 // Adapters (for advanced usage / plugin authors)
 export { motionAdapter } from './adapters/motion-adapter';
 export { animeAdapter } from './adapters/anime-adapter';
+export { gsapAdapter } from './adapters/gsap-adapter';
 
 // Auto-register built-in adapters
 import { motionAdapter } from './adapters/motion-adapter';
@@ -58,6 +59,15 @@ adapterRegistry.register({
   adapter: animeAdapter,
   priority: 10,
   capabilities: ['tween', 'timeline', 'stagger', 'svg'],
+});
+
+// GSAP — default for timeline, scroll, svg (best-in-class for these)
+import { gsapAdapter } from './adapters/gsap-adapter';
+adapterRegistry.register({
+  name: 'gsap',
+  adapter: gsapAdapter,
+  priority: 20,
+  capabilities: ['tween', 'timeline', 'stagger', 'scroll', 'svg'],
 });
 
 /**
