@@ -161,9 +161,58 @@ export const animeAdapter: IAnimationAdapter = {
       defaults.ease = toAnimeEasing(options.defaults.ease);
     }
 
+    const pauses: Array<{ position: number; callback?: () => void }> = [];
+    // Compare checkpoints at the same precision as Anime's playhead getters.
+    const roundPosition = (position: number): number => anime.utils.round(position, anime.engine.precision);
+    let previousPosition = 0;
+    let startPending = true;
     const tl = anime.createTimeline({
       autoplay: options?.autoplay ?? true,
       defaults,
+      onBeforeUpdate() {
+        if (pauses.length === 0 || tl.paused) return;
+        const atEnd = tl.progress === 1;
+        const framePosition = atEnd ? (tl.reversed ? 0 : tl.iterationDuration) : tl.iterationCurrentTime;
+        const position = roundPosition(framePosition);
+        if (position === previousPosition) return;
+
+        const forward = position > previousPosition;
+        let marker: (typeof pauses)[number] | undefined;
+        let checkpoint = position;
+        for (const pause of pauses) {
+          const at = roundPosition(pause.position);
+          const atStart = startPending && previousPosition === 0 && at === 0;
+          const crossed = forward
+            ? (previousPosition < at || atStart) && at <= position
+            : position <= at && at < previousPosition;
+          if (crossed && (!marker || (forward ? at < checkpoint : at > checkpoint))) {
+            marker = pause;
+            checkpoint = at;
+          }
+        }
+        startPending = false;
+        if (!marker) {
+          previousPosition = position;
+          return;
+        }
+
+        // Rewind the unrendered tick, then render to the marker with tween callbacks enabled.
+        const callbacks = pauses.filter((pause) => roundPosition(pause.position) === checkpoint);
+        const time = atEnd ? tl.duration : tl.currentTime;
+        const direction = forward ? 1 : -1;
+        tl.pause().seek(time + direction * (previousPosition - framePosition), true);
+        previousPosition = checkpoint;
+        tl.seek(time + direction * (marker.position - framePosition));
+        // Re-arm instant tweens at the opening checkpoint after Anime's tick finishes.
+        if (forward && marker.position === 0) {
+          queueMicrotask(() => {
+            if (tl.paused && tl.currentTime === 0) tl.reset(true);
+          });
+        }
+        for (const { callback } of callbacks) {
+          if (callback) queueMicrotask(callback);
+        }
+      },
     });
 
     // Add segments
@@ -173,23 +222,59 @@ export const animeAdapter: IAnimationAdapter = {
     }
 
     const controls = wrapAnimeControls(tl);
+    const syncPlayhead = <Args extends unknown[]>(action: (...args: Args) => void, resetStart = false) =>
+      (...args: Args) => {
+        action(...args);
+        previousPosition = roundPosition(tl.iterationCurrentTime);
+        if (resetStart) startPending = previousPosition === 0;
+      };
 
     // Extend with timeline-specific methods
     return {
       ...controls,
+      play: syncPlayhead(controls.play),
+      seek: syncPlayhead(controls.seek!, true),
+      cancel: syncPlayhead(controls.cancel, true),
+      finish: syncPlayhead(controls.finish),
+      restart: syncPlayhead(controls.restart, true),
+      reverse: syncPlayhead(controls.reverse),
       get duration() {
         return (tl.duration || 0) / 1000;
+      },
+      get progress() {
+        return controls.progress;
+      },
+      get currentTime() {
+        return controls.currentTime;
+      },
+      get playState() {
+        return controls.playState;
       },
       add(addTargets, addProps, offset?) {
         const addOpts = toAnimeOptions(addProps);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
+        previousPosition = roundPosition(tl.iterationCurrentTime);
         return this;
       },
-      label(_name, _offset?) {
-        // Anime.js v4 uses offset strings for label-like positioning
+      label(name, offset?) {
+        tl.label(name, toAnimePosition(offset));
         return this;
       },
-      addPause(_offset?, _callback?) {
+      addPause(offset?, callback?) {
+        // Let Anime resolve the position and account for it in the duration.
+        let key = '__morph_pause';
+        while (key in tl.labels) key += '_';
+        tl.label(key, toAnimePosition(offset));
+        const position = tl.labels[key];
+        delete tl.labels[key];
+        pauses.push({ position, callback });
+
+        const time = tl.currentTime;
+        const wasPaused = tl.paused;
+        // Anime reinitializes the playhead when adding a child.
+        tl.pause().add({ duration: 0, delay: 0 }, position).pause().seek(time, true);
+        previousPosition = roundPosition(tl.iterationCurrentTime);
+        if (!wasPaused) tl.resume();
         return this;
       },
     };
