@@ -513,11 +513,12 @@ it.each([['<<', 0], ['<<+=0.25', 0.25]] as const)('starts a nested Anime segment
   }
 });
 
-it('resolves a GSAP percentage gap from the attached Anime child duration', async () => {
+it('resolves a GSAP percentage gap from a built Anime child duration', async () => {
   const target = { x: 0 };
   const duration = vi.fn(() => 2000);
   const child = timeline({ autoplay: false })
     .add(target, { x: [0, 100], duration, ease: 'linear' });
+  await vi.waitFor(() => expect(child.duration).toBeCloseTo(2));
   const parent = timeline({ engine: 'gsap', autoplay: false })
     .add({ x: 0 }, { x: 100, duration: 1 })
     .add(child, '+=50%');
@@ -527,7 +528,6 @@ it('resolves a GSAP percentage gap from the attached Anime child duration', asyn
     await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2.5));
     expect(parent.duration).toBeCloseTo(4);
     expect(target.x).toBeCloseTo(25);
-    expect(duration).toHaveBeenCalledTimes(1);
     parent.seek(1.5);
     expect(target.x).toBeCloseTo(0);
   } finally {
@@ -535,25 +535,13 @@ it('resolves a GSAP percentage gap from the attached Anime child duration', asyn
   }
 });
 
-it('keeps a percentage-positioned Anime child off the shared GSAP-driven Anime clock', async () => {
-  const first = { x: 0 };
-  const second = { x: 0 };
-  const shared = timeline({ autoplay: false })
-    .add(first, { x: [0, 100], duration: 4, ease: 'linear' });
-  const isolated = timeline({ autoplay: false })
-    .add(second, { x: [0, 100], duration: 2, ease: 'linear' });
-  const parent = timeline({ engine: 'gsap', autoplay: false })
-    .add(shared, 0)
-    .add(isolated, '<+=50%');
-
+it('rejects an unbuilt Anime child at a GSAP percentage offset without attaching it', async () => {
+  const child = timeline({ autoplay: false }).add({ x: 0 }, { x: 100, duration: 2 });
+  const parent = timeline({ engine: 'gsap', autoplay: false }).label('start', 0.5);
   try {
-    parent.seek(1.5);
-    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.5));
-    expect(first.x).toBeCloseTo(37.5);
-    expect(second.x).toBeCloseTo(25);
-    isolated.seek(1.5);
-    expect(first.x).toBeCloseTo(37.5);
-    expect(second.x).toBeCloseTo(75);
+    expect(() => parent.add(child, '<+=50%')).toThrow(/Build the Anime child.*absolute or label offset/);
+    parent.add(child, 'start+=0.25');
+    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2.75));
   } finally {
     parent.cancel();
   }
@@ -578,69 +566,49 @@ it('does not count the Anime host loop default on nested completion timers', asy
   }
 });
 
-it('completes a percentage-positioned Anime child with a fractional duration', async () => {
-  const child = timeline({ autoplay: false })
-    .add({ x: 0 }, { x: [0, 100], duration: 0.3333333, ease: 'linear' });
-  const finished = vi.fn();
-  void child.finished.then(finished);
-  const parent = timeline({ engine: 'gsap', autoplay: false })
-    .add(child, '+=50%')
-    .label('end');
-
-  try {
-    parent.seek('end');
-    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
-    await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
-  } finally {
-    parent.cancel();
-  }
-});
-
-it.each(['seek', 'nested seek', 'play'] as const)('restores a completed percentage-positioned Anime child on parent %s', async (mode) => {
+it('renders a shared Anime child after preview and scrubs backward without duplicate completion', async () => {
   const target = { x: 0 };
+  const onComplete = vi.fn();
   const child = timeline({ autoplay: false })
-    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
-  const inner = timeline({ engine: 'gsap', autoplay: false })
-    .add(child, '+=50%')
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear', onComplete });
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add(child, 0.5)
     .add({ x: 0 }, { x: 100, duration: 3 });
-  const parent = mode === 'nested seek'
-    ? timeline({ engine: 'gsap', autoplay: false }).add(inner)
-    : inner;
 
   try {
     parent.seek(2);
     await vi.waitFor(() => expect(target.x).toBeCloseTo(100));
+    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
     child.seek(0.25);
     expect(target.x).toBeCloseTo(25);
-    if (mode === 'play') parent.play();
-    else parent.seek(3);
-    await vi.waitFor(() => expect(target.x).toBeCloseTo(100));
+    parent.seek(1);
+    expect(target.x).toBeCloseTo(50);
+    await Promise.resolve();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    parent.seek(2);
+    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledTimes(2));
+    child.seek(0.25);
+    parent.seek(3);
+    expect(target.x).toBeCloseTo(100);
   } finally {
     parent.cancel();
   }
 });
 
-it('hands off a percentage-positioned Anime child to a later GSAP tween on the same target', async () => {
-  const target = { x: 0 };
+it('finishes rendering GSAP siblings when a shared Anime child completion pauses playback', async () => {
+  const sibling = { x: 0 };
+  const parent = timeline({ engine: 'gsap', autoplay: false });
+  const onComplete = vi.fn(() => parent.pause());
   const child = timeline({ autoplay: false })
-    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
-  const parent = timeline({ engine: 'gsap', autoplay: false })
-    .add(child, '+=50%')
-    .add(target, { x: 200, duration: 1, ease: 'none' })
-    .add({ x: 0 }, { x: 100, duration: 2 });
+    .add({ x: 0 }, { x: 100, duration: 0.1, onComplete });
+  parent.add(child, 0.05)
+    .add(sibling, { x: 100, duration: 1, ease: 'none' }, 0.06);
 
   try {
-    parent.seek(2);
-    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2));
-    expect(target.x).toBeCloseTo(150);
-    parent.seek(1.75);
-    expect(target.x).toBeCloseTo(125);
-    parent.seek(4);
-    expect(target.x).toBeCloseTo(200);
-    child.seek(0.25);
-    expect(target.x).toBeCloseTo(25);
-    parent.seek(3);
-    expect(target.x).toBeCloseTo(200);
+    parent.play();
+    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    expect(parent.playState).toBe('paused');
+    expect(sibling.x).toBeCloseTo((parent.currentTime - 0.06) * 100, 4);
   } finally {
     parent.cancel();
   }

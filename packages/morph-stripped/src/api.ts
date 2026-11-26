@@ -46,14 +46,17 @@ async function loadGsapFor(props: Record<string, any>) {
 
 type Position = string | number;
 type AnimeModule = typeof import('animejs');
-type AnimeSegment = { host: any; start: number; duration: number; labels: Record<string, number>; previous: boolean };
+type AnimeSegment = {
+  host: any; start: number; duration: number; labels: Record<string, number>; previous: boolean;
+  seekParent?: (time: number) => void;
+};
 type AnimeTrack = (host: any, segment?: AnimeSegment) => void;
 type TimelineState = {
   ready: () => Promise<void>;
   native: () => { tl: any; engine: 'g' | 'a'; anime: AnimeModule };
+  initialized: () => boolean;
   adopt: () => void;
-  mount: (host: any, start: number) => number;
-  preview?: () => void;
+  mount: (host: any, start: number, seekParent?: AnimeSegment['seekParent']) => number;
   parent?: TimelineState;
 };
 const timelines = new WeakMap<MorphTimeline, TimelineState>();
@@ -99,7 +102,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   let activeEngine: 'g' | 'a' = opt?.engine === 'gsap' ? 'g' : 'a';
   let autoplay = opt?.autoplay !== false;
   let pending: Promise<void> | undefined;
-  let previewed = false;
 
   const enqueue = (run: () => void, load?: Promise<unknown> | false) => {
     if (!pending && !load) {
@@ -116,20 +118,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     else run();
   };
   const control = (run: () => void) => step(() => enqueue(run));
-  const restoreGsapFrameOnMove = () => {
-    if (previewed) return;
-    previewed = true;
-    const render = realTl.render;
-    realTl.render = (time: number, suppressEvents?: boolean, force?: boolean) => {
-      const previous = realTl.totalTime();
-      if (Math.max(0, Math.min(time, realTl.totalDuration())) !== previous) {
-        realTl.render = render;
-        previewed = false;
-        render.call(realTl, previous, true, true);
-      }
-      return render.call(realTl, time, suppressEvents, force);
-    };
-  };
   const addAnime = (run: () => void) => {
     const { paused, currentTime, duration, reversed } = realTl;
     run();
@@ -179,12 +167,13 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const state: TimelineState = {
     ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine, anime }),
+    initialized: () => !!realTl && !pending,
     adopt: () => {
       if (realTl && activeEngine === 'a' && !realTl.cancelled) realTl.cancel();
     },
-    mount: (host, start) => {
+    mount: (host, start, seekParent) => {
       if (!realTl.cancelled) realTl.cancel();
-      const current = segment = { host, start, duration: 0, labels: Object.create(null), previous: false };
+      const current = segment = { host, start, duration: 0, labels: Object.create(null), previous: false, seekParent };
       for (const insert of tracks) insert(host, current);
       host.add({ delay: 0, loop: 0, duration: current.duration, onComplete: completeAnime }, start);
       return current.duration;
@@ -200,8 +189,8 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
       const position = segment
         ? segment.start + Math.max(0, Math.min(segment.duration, time * 1000))
         : time * 1000;
-      host.seek(host.reversed ? host.duration - position : position);
-      state.preview?.();
+      if (segment?.seekParent) segment.seekParent(position / 1000);
+      else host.seek(host.reversed ? host.duration - position : position);
     };
     for (const key of ['play', 'pause', 'reverse', 'cancel', 'restart', 'finish'] as const) {
       const run = controls[key];
@@ -235,41 +224,35 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
         for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent) {
           if (ancestor === child) throw new TypeError('Cannot nest a timeline inside itself');
         }
+        const { tl: childTl, engine: childEngine } = child.native();
+        let duration = 0;
+        if (activeEngine === 'g' && childEngine === 'a' && typeof p === 'string' && /=.*%$/.test(p)) {
+          if (!child.initialized()) {
+            throw new Error('Build the Anime child before adding it at a duration-relative percentage offset, or use an absolute or label offset');
+          }
+          duration = childTl.duration / 1000;
+        }
         child.parent = state;
         child.adopt();
         step(() => enqueue(() => {
           const { tl, engine, anime: animeModule } = child.native();
           if (activeEngine === 'a' && engine === 'a') {
             recordAnime((host, current) =>
-              child.mount(host, (current?.start ?? 0) + animeOffset(host, toAnimePosition(p), current)));
+              child.mount(host, (current?.start ?? 0) + animeOffset(host, toAnimePosition(p), current), current?.seekParent));
           } else if (activeEngine === 'g' && engine === 'g') {
             realTl.add(tl, p);
             tl.paused(false);
           } else {
             const controls = t as MorphTimeline;
             if (engine === 'a') {
-              const isolated = typeof p === 'string' && /=.*%$/.test(p);
-              const host = isolated ? animeModule.createTimeline({ autoplay: false })
-                : (mixedHost ??= animeModule.createTimeline({ autoplay: false }));
-              if (isolated) {
-                const duration = child.mount(host, 0);
-                const clock = {
-                  get progress() { return 0; },
-                  set progress(progress: number) { host.seek(progress * duration); },
-                };
-                realTl.fromTo(clock, { progress: 0 }, {
-                  progress: 1, duration: duration / 1000, ease: 'none', immediateRender: false, lazy: false,
-                }, p);
-                child.preview = restoreGsapFrameOnMove;
-              } else {
-                const clock = {
-                  get time() { return 0; },
-                  set time(_: number) { host.seek(realTl.time() * 1000); },
-                };
-                realTl.fromTo(clock, { time: 0 }, { time: 1, duration: 0, ease: 'none', immediateRender: false }, p);
-                const tween = realTl.recent();
-                tween.duration(child.mount(host, tween.startTime() * 1000) / 1000);
-              }
+              const host = mixedHost ??= animeModule.createTimeline({ autoplay: false });
+              const clock = {
+                get time() { return 0; },
+                set time(_: number) { host.seek(realTl.time() * 1000); },
+              };
+              realTl.fromTo(clock, { time: 0 }, { time: 1, duration, ease: 'none', immediateRender: false, lazy: false }, p);
+              const tween = realTl.recent();
+              tween.duration(child.mount(host, tween.startTime() * 1000, tlo.seek) / 1000);
             } else {
               controls.pause();
               const clock = {
@@ -296,7 +279,13 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
               let replay: Record<string, any> | undefined;
               recordAnime((host, current) => {
                 const offset = animeOffset(host, toAnimePosition(o), current);
-                const definition = current ? replay ?? options : params;
+                let definition = current ? replay ?? options : params;
+                const { onComplete } = definition;
+                if (current?.seekParent && onComplete) {
+                  definition = { ...definition, onComplete(this: unknown, animation: unknown) {
+                    queueMicrotask(() => onComplete.call(this, animation));
+                  } };
+                }
                 if (!current) {
                   replay = { ...options };
                   for (const property of Object.keys(params)) {
