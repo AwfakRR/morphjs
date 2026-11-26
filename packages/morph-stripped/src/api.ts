@@ -469,31 +469,21 @@ export const svg = {
         if (inline === value) {
           computed = readTransform();
         } else {
-          const cssText = style.cssText;
-          // CSSOM can serialize pending var() longhands as empty declarations.
-          const canRestore = !/:\s*(?:!important\s*)?;/.test(cssText) || !element.getAnimations;
           const cancelTransformTransition = () => {
+            if (!element.getAnimations) return;
+            readTransform();
             for (const animation of element.getAnimations()) {
               if ('transitionProperty' in animation && animation.transitionProperty === 'transform') animation.cancel();
             }
           };
-          if (canRestore) style.setProperty('transition-property', 'none', 'important');
           try {
             if (priority) style.setProperty('transform', inline, priority);
             else style.transform = inline;
-            if (!canRestore) cancelTransformTransition();
+            cancelTransformTransition();
             computed = readTransform();
           } finally {
             style.transform = value;
-            if (canRestore) {
-              try {
-                readTransform();
-              } finally {
-                style.cssText = cssText;
-              }
-            } else {
-              cancelTransformTransition();
-            }
+            cancelTransformTransition();
           }
         }
         const composable = inline.includes('(') && !/\b(?:var|env|attr)\(/i.test(inline);

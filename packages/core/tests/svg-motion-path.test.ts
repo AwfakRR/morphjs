@@ -13,9 +13,6 @@ class Marker {
     getPropertyValue(name: string) { return this.declarations.get(name)?.value ?? ''; }
     getPropertyPriority(name: string) { return this.declarations.get(name)?.priority ?? ''; }
     setProperty(name: string, value: string, priority = '') {
-      if (name === 'transition-property' && this.getPropertyValue('transition').startsWith('var(')) {
-        this.declarations.delete('transition');
-      }
       if (value) this.declarations.set(name, { value, priority });
       else this.declarations.delete(name);
     }
@@ -207,13 +204,23 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
       await first.finished;
       const endpoint = marker.style.transform;
 
+      const hasTransformTransition = !transition || declaration === property;
       const reads: string[] = [];
+      let sampled = endpoint;
+      let pending = false;
+      Object.assign(marker, {
+        getAnimations: () => pending ? [{
+          transitionProperty: 'transform',
+          cancel: () => { reads.push(marker.style.transform); pending = false; },
+        }] : [],
+      });
       vi.stubGlobal('window', {
         getComputedStyle: () => {
-          const suppressed = marker.style.getPropertyValue(property) === 'none'
-            && marker.style.getPropertyPriority(property) === 'important';
-          if (suppressed) reads.push(marker.style.transform);
-          return { transform: !marker.style.transform && suppressed ? 'none' : 'matrix(1, 0, 0, 1, 40, 60)' };
+          if (sampled !== marker.style.transform) {
+            sampled = marker.style.transform;
+            pending = hasTransformTransition;
+          }
+          return { transform: pending ? 'matrix(1, 0, 0, 1, 40, 60)' : 'none' };
         },
       });
       const next = svg.motionPath(target, track, options);
@@ -221,7 +228,7 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
       await next.finished;
 
       expect(marker.style.transform).toBe(endpoint);
-      expect(reads).toEqual(['', endpoint]);
+      expect(reads).toEqual(hasTransformTransition ? ['', endpoint] : []);
       expect(marker.style.getPropertyValue(declaration)).toBe(transition);
       expect(marker.style.getPropertyPriority(declaration)).toBe(priority);
       expect(marker.style.cssText).toBe(inline);
@@ -233,7 +240,6 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     const style = marker.style;
     style.setProperty('transition', 'var(--fade)', 'important');
     style.setProperty('transition-delay', '25ms', 'important');
-    vi.spyOn(style, 'cssText', 'get').mockReturnValue('transition-property:  !important; transition-delay: 25ms !important;');
     const write = vi.spyOn(style, 'setProperty');
     const cancel = vi.fn();
     const cancelOpacity = vi.fn();
@@ -265,6 +271,25 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(write).not.toHaveBeenCalled();
     expect(style.getPropertyValue('transition')).toBe('var(--fade)');
     expect(style.getPropertyPriority('transition-delay')).toBe('important');
+  });
+
+  it('keeps competing logical and physical margins in their authored order on replay', async () => {
+    const { marker, target } = browser();
+    const style = marker.style;
+    style.setProperty('margin-top', '0');
+    style.setProperty('margin-inline-start', '20px');
+    style.setProperty('margin-left', '10px');
+    style.setProperty('margin-right', '0');
+    style.setProperty('margin-bottom', '0');
+    const reparse = vi.spyOn(style, 'cssText', 'set');
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false };
+    for (let run = 0; run < 2; run++) {
+      const controls = svg.motionPath(target, track, options);
+      controls.finish();
+      await controls.finished;
+    }
+    expect(reparse).not.toHaveBeenCalled();
   });
 
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
