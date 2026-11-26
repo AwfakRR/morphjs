@@ -158,7 +158,10 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     },
 
     finish() {
-      if (realTimeline) realTimeline.finish();
+      if (canceled) return;
+      autoplay = false;
+      const rt = buildRealTimeline();
+      if (rt) rt.finish();
       else pendingActions.push((t) => t.finish());
     },
 

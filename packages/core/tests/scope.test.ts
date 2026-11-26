@@ -240,6 +240,26 @@ it.each(['seek', 'reverse'])('tracks a finished Anime tween after %s and restart
   }
 });
 
+it.each(['anime', 'gsap'])('finishes a %s timeline paused before its initial autoplay', async engine => {
+  const scope = createScope();
+  const target = { value: 0 };
+  const timeline = scope.timeline({ engine, defaults: { duration: 1 } })
+    .add(target as unknown as MorphTargets, { value: 100 });
+  const completed = vi.fn();
+  void timeline.finished.then(completed);
+
+  try {
+    timeline.pause();
+    timeline.finish();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(target.value).toBe(100);
+    expect(completed).toHaveBeenCalledOnce();
+    expect(scope.size).toBe(0);
+  } finally {
+    scope.revert();
+  }
+});
+
 it.each(['anime', 'gsap'])('tracks a completed %s timeline again when it is restarted and re-added', async engine => {
   const scope = createScope();
   const timeline = scope.timeline({ engine, defaults: { duration: 0.4 } })
