@@ -9,7 +9,9 @@ describe('Motion springs', () => {
     vi.stubGlobal('window', {});
     vi.stubGlobal('document', new EventTarget());
     vi.stubGlobal('Element', class {});
+    vi.stubGlobal('SVGElement', class {});
     vi.stubGlobal('NodeList', class {});
+    vi.stubGlobal('HTMLCollection', class {});
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
       setTimeout(() => callback(performance.now()), 16)
     );
@@ -123,10 +125,11 @@ describe('Motion springs', () => {
     }
   });
 
-  it.each(['Motion spring', 'Anime tween'])('unregisters a %s canceled while its advanced stagger resolves', async (kind) => {
+  it.each(['Motion spring', 'Anime.js tween'])('unregisters the %s canceled while its advanced stagger resolves', async (kind) => {
     await ensureAnime();
     const proxy = { val: 0 };
     const delay = stagger(0.1, { grid: [1, 1] });
+    const logError = vi.spyOn(console, 'error');
     const controls = kind === 'Motion spring'
       ? spring(proxy as any, { val: 100 }, undefined, { delay })
       : animate(proxy as any, { val: 100 }, { engine: 'anime', duration: 1, delay });
@@ -139,7 +142,9 @@ describe('Motion springs', () => {
       await vi.advanceTimersByTimeAsync(4000);
       expect(stillTracked).toBe(false);
       expect(proxy.val).toBe(0);
+      expect(logError).not.toHaveBeenCalled();
     } finally {
+      logError.mockRestore();
       stateManager.cancelFor(proxy as any);
     }
   });
