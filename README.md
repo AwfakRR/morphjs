@@ -103,6 +103,8 @@ flip.from(state, { duration: 0.4, spring: true });
 
 Drag limits are signed pixel offsets from the element's starting position; omitted sides are unbounded. The element stays where you leave it by default. Set `momentum: true` to glide within the limits, or `snapToOrigin: true` to spring back to the start instead (snap takes precedence). Drag callbacks report the current offset in pixels and pointer velocity in pixels per second.
 
+In `morphjs` (core), reduced motion disables the glide and makes snap-to-origin immediate.
+
 ### Animation Scopes
 
 In the full `morphjs` package, group animations and subscriptions for cleanup:

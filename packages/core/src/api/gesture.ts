@@ -1,7 +1,7 @@
 // ponytail: clean gesture delegation to motion with lightweight native fallback
 import type { MorphTargets, MorphGestureOptions, GestureInfo } from '../types';
 import { ensureMotion, motionAdapter } from '../adapters/motion-adapter';
-import { resolveAdapter } from '../router';
+import { resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
 
 export function gesture(targets: MorphTargets, options: MorphGestureOptions): () => void {
@@ -70,6 +70,11 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   const animations: Array<{ stop(): void }> = [];
 
   const render = () => { el.style.transform = `translate(${x.position}px, ${y.position}px)`; };
+  const snapBack = () => {
+    if (!x.position && !y.position) return;
+    x.position = y.position = 0;
+    render();
+  };
   const stop = () => {
     release++;
     animations.splice(0).forEach(animation => animation.stop());
@@ -120,6 +125,10 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const id = ++release;
     options.onDragEnd?.(e, info(e));
     if (id !== release || (!snapToOrigin && (!momentum || (!x.velocity && !y.velocity)))) return;
+    if (shouldReduceMotion()) {
+      if (snapToOrigin) snapBack();
+      return;
+    }
 
     ensureMotion().then(({ animate }) => {
       if (id !== release) return;
@@ -142,9 +151,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     }).catch(() => {
       if (id !== release) return;
       stop();
-      if (!snapToOrigin) return;
-      x.position = y.position = 0;
-      render();
+      if (snapToOrigin) snapBack();
     });
   };
 

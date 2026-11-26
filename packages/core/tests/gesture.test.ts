@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { gesture } from '../src/index';
+import { configure, gesture } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 
 const { hover, press, animate } = vi.hoisted(() => ({ hover: vi.fn(), press: vi.fn(), animate: vi.fn() }));
@@ -23,6 +23,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  configure({ reducedMotion: 'user' });
   vi.resetAllMocks();
   vi.unstubAllGlobals();
 });
@@ -103,6 +104,28 @@ describe('core gestures', () => {
     expect(animate).toHaveBeenCalledWith(40, 0, expect.objectContaining({ type: 'spring' }));
     animate.mock.lastCall![2].onUpdate(0);
     expect(target.style.transform).toBe('translate(0px, 0px)');
+    cleanup();
+  });
+
+  it.each([
+    ['snaps immediately', { momentum: true, snapToOrigin: true }, 'translate(0px, 0px)'],
+    ['stays at the release position', { momentum: true }, 'translate(40px, 20px)'],
+  ] as const)('%s when reduced motion is enabled', async (_, drag, expected) => {
+    configure({ reducedMotion: 'always' });
+    const target = new TestElement();
+    const onDragEnd = vi.fn();
+    const cleanup = gesture(target as unknown as Element, { drag, onDragEnd });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 40, 20, 20);
+    expect(target.style.transform).toBe('translate(40px, 20px)');
+    send(target, 'pointerup', 40, 20, 25);
+
+    expect(target.style.transform).toBe(expected);
+    expect(onDragEnd).toHaveBeenCalledWith(expect.any(Event), expect.objectContaining({
+      offset: { x: 40, y: 20 },
+    }));
+    await Promise.resolve();
+    expect(animate).not.toHaveBeenCalled();
     cleanup();
   });
 
