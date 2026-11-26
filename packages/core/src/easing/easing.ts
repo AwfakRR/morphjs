@@ -1,21 +1,30 @@
 import type { CubicBezier, EasingFunction, EasingValue } from '../types';
 
 function cubicBezier([x1, y1, x2, y2]: CubicBezier): EasingFunction {
-  const sample = (t: number, a: number, b: number) =>
-    ((1 + 3 * (a - b)) * t + 3 * (b - 2 * a)) * t * t + 3 * a * t;
+  const ax = 1 + 3 * (x1 - x2), bx = 3 * (x2 - 2 * x1), cx = 3 * x1;
+  const ay = 1 + 3 * (y1 - y2), by = 3 * (y2 - 2 * y1), cy = 3 * y1;
+  // Anime samples the same easing at the same progress for synchronized properties and targets.
+  let lastProgress = NaN;
+  let lastValue: number;
 
   return progress => {
     if (progress === 0 || progress === 1) return progress;
+    if (progress === lastProgress) return lastValue;
     let min = 0;
     let max = 1;
     for (let i = 0; i < 24; i++) {
       const t = (min + max) / 2;
-      const x = sample(t, x1, x2);
-      if (x === progress) return sample(t, y1, y2);
+      const x = (ax * t + bx) * t * t + cx * t;
+      if (x === progress) {
+        min = max = t;
+        break;
+      }
       if (x < progress) min = t;
       else max = t;
     }
-    return sample((min + max) / 2, y1, y2);
+    const t = (min + max) / 2;
+    lastProgress = progress;
+    return lastValue = (ay * t + by) * t * t + cy * t;
   };
 }
 

@@ -29,6 +29,35 @@ it.each(['anime', 'gsap'])('applies a per-call Bezier tuple to a real %s tween',
   }
 });
 
+it('samples synchronized and delayed properties with the same Anime Bezier ease', async () => {
+  vi.stubGlobal('window', {});
+  vi.stubGlobal('document', {});
+  vi.stubGlobal('Element', class {});
+  vi.stubGlobal('NodeList', class {});
+
+  const targets = Array.from({ length: 3 }, () => ({ x: 0, y: 0 }));
+  const controls = animate(targets as any, { x: [0, 100], y: [0, 100] }, {
+    engine: 'anime', duration: 1, autoplay: false, ease: [0.2, 0.8, 0.6, 1.4],
+    delay: (index: number) => index === 2 ? 0.25 : 0,
+  });
+
+  try {
+    await vi.waitFor(() => expect(controls.duration).toBe(1.25));
+    for (const [time, active, delayed] of [
+      [0.5, 102.49903, 68.62956],
+      [0.75, 112.71030, 102.49903],
+      [0.5, 102.49903, 68.62956],
+    ]) {
+      controls.seek?.(time);
+      expect(targets.map(({ x, y }) => [x, y])).toEqual([active, active, delayed].map(value => [
+        expect.closeTo(value, 2), expect.closeTo(value, 2),
+      ]));
+    }
+  } finally {
+    controls.cancel();
+  }
+});
+
 it.each([
   ['anime', 'defaults'], ['gsap', 'defaults'],
   ['anime', 'segment'], ['gsap', 'segment'],
