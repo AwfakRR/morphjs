@@ -27,32 +27,29 @@ export function getMotionSync(): typeof import('motion') {
 }
 
 export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
-  const hasAnimations = motionAnimation.animations?.length !== 0;
-  const playBackward = (time: number) => {
-    motionAnimation.play();
-    // Motion's JS driver resumes a paused animation as though its speed were forward.
-    motionAnimation.time = time;
+  const tracks = motionAnimation.animations ?? [motionAnimation];
+  const play = (backward = false) => {
+    for (const track of tracks) {
+      const { speed, state, time } = track;
+      if (backward) track.speed = -Math.abs(speed || 1);
+      if (backward && state === 'running') continue;
+      track.play();
+      // Motion's JS driver resumes a paused animation as though its speed were forward.
+      if ((backward || speed < 0) && state !== 'running') {
+        track.time = state === 'finished' && speed >= 0 && time === 0 ? track.duration : time;
+      }
+    }
   };
 
   const controls: MorphControls = {
-    play: () => {
-      if (hasAnimations && motionAnimation.speed < 0 && motionAnimation.state !== 'running') {
-        playBackward(motionAnimation.time);
-      } else motionAnimation.play();
-    },
+    play: () => play(),
     pause: () => motionAnimation.pause(),
     cancel: () => {
       motionAnimation.cancel();
       notifyControlsCanceled(controls);
     },
     finish: () => motionAnimation.finish(),
-    reverse: () => {
-      if (!hasAnimations) return;
-      const { speed, state, time, duration } = motionAnimation;
-      motionAnimation.speed = -Math.abs(speed || 1);
-      if (state === 'running') return;
-      playBackward(state === 'finished' && speed >= 0 && time === 0 ? duration : time);
-    },
+    reverse: () => play(true),
     seek: (time: number) => { motionAnimation.time = time; },
     get duration() {
       return motionAnimation.duration;
@@ -61,13 +58,13 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       return motionAnimation.duration ? Math.max(0, Math.min(1, motionAnimation.time / motionAnimation.duration)) : 0;
     },
     get currentTime() {
-      return hasAnimations ? motionAnimation.time ?? 0 : 0;
+      return tracks.length ? motionAnimation.time ?? 0 : 0;
     },
     get finished() {
       return Promise.resolve(finished ?? motionAnimation.finished);
     },
     get playState() {
-      return hasAnimations ? motionAnimation.state ?? 'running' : 'idle';
+      return tracks.length ? motionAnimation.state ?? 'running' : 'idle';
     },
     commitStyles: () => {
       if (typeof motionAnimation.commitStyles === 'function') {
@@ -78,7 +75,7 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       return Promise.resolve(finished ?? motionAnimation.finished).then(onfulfilled, onrejected);
     },
     restart: () => {
-      if (hasAnimations && motionAnimation.speed < 0) motionAnimation.speed *= -1;
+      for (const track of tracks) if (track.speed < 0) track.speed *= -1;
       motionAnimation.cancel();
       motionAnimation.play();
     }

@@ -29,31 +29,28 @@ export const loadGsap = load(async () => {
 
 export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
   const isA = type === 'a', isG = type === 'g', isM = type === 'm';
-  const hasMotionAnimations = isM && anim.animations?.length !== 0;
-  const playBackward = (time: number) => {
-    anim.play();
-    // Motion's JS driver resumes a paused animation as though its speed were forward.
-    anim.time = time;
+  const tracks = isM ? anim.animations ?? [anim] : [];
+  const playMotion = (backward = false) => {
+    for (const track of tracks) {
+      const { speed, state, time } = track;
+      if (backward) track.speed = -Math.abs(speed || 1);
+      if (backward && state === 'running') continue;
+      track.play();
+      // Motion's JS driver resumes a paused animation as though its speed were forward.
+      if ((backward || speed < 0) && state !== 'running') {
+        track.time = state === 'finished' && speed >= 0 && time === 0 ? track.duration : time;
+      }
+    }
   };
   return {
-    play: () => {
-      if (hasMotionAnimations && anim.speed < 0 && anim.state !== 'running') playBackward(anim.time);
-      else anim.play?.();
-    },
+    play: () => isM ? playMotion() : anim.play?.(),
     pause: () => anim.pause?.(),
-    reverse: () => {
-      if (!isM) return anim.reverse?.();
-      if (!hasMotionAnimations) return;
-      const { speed, state, time, duration } = anim;
-      anim.speed = -Math.abs(speed || 1);
-      if (state === 'running') return;
-      playBackward(state === 'finished' && speed >= 0 && time === 0 ? duration : time);
-    },
+    reverse: () => isM ? playMotion(true) : anim.reverse?.(),
     cancel: () => isG ? anim.kill() : isA ? (anim.pause?.(), anim.seek?.(0)) : anim.cancel?.(),
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => {
       if (!isM) return anim.restart?.();
-      if (hasMotionAnimations && anim.speed < 0) anim.speed *= -1;
+      for (const track of tracks) if (track.speed < 0) track.speed *= -1;
       anim.cancel?.();
       anim.play?.();
     },
@@ -65,11 +62,11 @@ export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
       if (isM) return anim.duration ? Math.max(0, Math.min(1, anim.time / anim.duration)) : 0;
       return (isG ? anim.progress() : anim.progress) ?? 0;
     },
-    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : hasMotionAnimations ? anim.time : 0) ?? 0; },
+    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : tracks.length ? anim.time : 0) ?? 0; },
     get playState() {
       if (isG) return (!anim.isActive() && anim.progress() >= 1) ? 'finished' : anim.paused() ? 'paused' : anim.isActive() ? 'running' : 'idle';
       if (isA) return anim.completed ? 'finished' : anim.paused ? 'paused' : 'running';
-      return hasMotionAnimations ? anim.state ?? 'running' : 'idle';
+      return tracks.length ? anim.state ?? 'running' : 'idle';
     },
     get finished() { return Promise.resolve(anim.then ? anim.then() : anim.finished || anim); },
     commitStyles: () => anim.commitStyles?.(),

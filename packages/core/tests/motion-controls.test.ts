@@ -65,3 +65,28 @@ it('reverses a paused Motion tween from its current position', async () => {
     controls.cancel();
   }
 });
+
+it('reverses each track from its own position after another track finishes', async () => {
+  const target = { short: 0, long: 0 };
+  const options = {
+    engine: 'motion', duration: 2, ease: 'linear',
+    short: { duration: 1, ease: 'linear' },
+  };
+  const controls = animate(target as any, { short: [0, 100], long: [0, 100] }, options);
+  try {
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(target.short).toBe(100);
+    expect(target.long).toBeCloseTo(60, 0);
+    const before = target.long;
+
+    controls.reverse();
+    await vi.advanceTimersByTimeAsync(160);
+
+    expect(target.short).toBeGreaterThan(80);
+    expect(target.short).toBeLessThan(87);
+    expect(target.long).toBeGreaterThan(before - 10);
+    expect(target.long).toBeLessThan(before - 6);
+  } finally {
+    controls.cancel();
+  }
+});
