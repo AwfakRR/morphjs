@@ -46,7 +46,7 @@ async function loadGsapFor(props: Record<string, any>) {
 
 type Position = string | number;
 type AnimeModule = typeof import('animejs');
-type AnimeHost = { tl: any; targets?: (targets: object[]) => object[] };
+type AnimeHost = { tl: any; timing?: boolean };
 type AnimeTrack = (host: AnimeHost, offset: number) => void;
 type TimelineState = {
   ready: () => Promise<void>;
@@ -66,25 +66,21 @@ function animeOffset(tl: any, position?: Position): number {
   return offset;
 }
 
-function stageAnimeTargets() {
-  const proxies = new WeakMap<object, object>();
-  const forwarding: ProxyHandler<object> = {
-    get(target, key) {
-      const value = Reflect.get(target, key, target);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  };
-  return (targets: object[]) => targets.map(target => {
-    let proxy = proxies.get(target);
-    if (!proxy) {
-      const element = target as Element;
-      proxy = element.nodeType === 1 && typeof element.cloneNode === 'function'
-        ? element.cloneNode(false)
-        : new Proxy(target, forwarding);
-      proxies.set(target, proxy);
-    }
-    return proxy;
-  });
+function animeParams(value: any, timing: boolean): any {
+  if (Array.isArray(value)) return value.map(item => animeParams(item, timing));
+  if (!timing && typeof value === 'function') {
+    const resolved = new Map<object, any>();
+    return (target: unknown, ...args: any[]) => {
+      if (!target || typeof target !== 'object') return value(target, ...args);
+      if (!resolved.has(target)) resolved.set(target, animeParams(value(target, ...args), false));
+      return resolved.get(target);
+    };
+  }
+  if (value?.constructor !== Object) return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key, timing && key === 'composition' ? 'none'
+      : /^(on[A-Z]|modifier$|playbackEase$)/.test(key) ? item : animeParams(item, timing),
+  ]));
 }
 
 function withAnimeStart(value: any, from: (target: object) => unknown): any {
@@ -159,7 +155,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
         defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
       });
       // A child known before initialization only needs a timing pass here.
-      sourceHost = { tl: realTl, targets: state.parent ? stageAnimeTargets() : undefined };
+      sourceHost = { tl: realTl, timing: !!state.parent };
     }
     seq.splice(0).forEach(run => run());
     return pending;
@@ -262,9 +258,12 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             enqueue(() => {
               const offset = animeOffset(realTl, toAnimePosition(o));
               const params = toAnimeOptions(p, undefined, true);
-              const replay = { ...realTl.defaults, ...params };
+              const options = { ...realTl.defaults, ...params };
+              const replay = sourceHost.timing ? animeParams(options, false) : options;
               const { $, get } = anime.utils;
               const targets = $(t);
+              const timing = () => ({ ...animeParams(replay, true), composition: 'none' });
+              const measure = sourceHost.timing ? timing() : undefined;
               for (const property of Object.keys(params)) {
                 if (property in realTl.defaults) continue;
                 const starts = new Map<object, any>();
@@ -276,10 +275,10 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
                     starts.set(target, get(target, property));
                   }
                 }
-                if (starts.size) replay[property] = withAnimeStart(params[property], target => starts.get(target));
+                if (starts.size) replay[property] = withAnimeStart(replay[property], target => starts.get(target));
               }
-              tracks.push((host, start) => host.tl.add(host.targets?.(targets) ?? targets, replay, start + offset));
-              addAnime(() => { realTl.add(sourceHost.targets?.(targets) ?? t, params, offset); });
+              tracks.push((host, start) => host.tl.add(targets, host.timing ? measure ?? timing() : replay, start + offset));
+              addAnime(() => { realTl.add(measure ? targets : t, measure ?? params, offset); });
             });
           }
         });
