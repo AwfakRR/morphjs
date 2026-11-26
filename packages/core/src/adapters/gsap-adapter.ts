@@ -12,6 +12,7 @@ import type {
   TimelineOptions,
 } from '../types';
 import { toGsapEasing } from '../easing/easing';
+import { notifyControlsCanceled } from '../utils/controls';
 import { createDeferredControls } from '../utils/deferred-controls';
 
 /** Cached GSAP module */
@@ -72,13 +73,14 @@ export function getGsapSync(): any {
  * GSAP natively uses seconds and 0-1 progress — zero conversion overhead.
  */
 export function wrapGsapControls(tween: any): MorphControls {
-  return {
+  const controls: MorphControls = {
     play: () => tween.play(),
     pause: () => tween.pause(),
     reverse: () => tween.reverse(),
     restart: () => tween.restart(),
     cancel: () => {
       tween.kill();
+      notifyControlsCanceled(controls);
     },
     finish: () => {
       tween.progress(1);
@@ -106,6 +108,7 @@ export function wrapGsapControls(tween: any): MorphControls {
       return (tween.then ? tween.then() : Promise.resolve()).then(onfulfilled, onrejected);
     },
   };
+  return controls;
 }
 
 /**
