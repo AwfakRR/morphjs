@@ -28,7 +28,6 @@ export function getMotionSync(): typeof import('motion') {
 
 export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
   const tracks = motionAnimation.animations ?? [motionAnimation];
-  const frame = motionModule?.frame;
   const legacyEnds = !('state' in motionAnimation) ? new WeakMap<object, number>() : undefined;
   if (legacyEnds) {
     for (const track of tracks) {
@@ -54,9 +53,10 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
   const writeTime = (track: any, time: number, delay = delayOf(track)) => {
     // Motion's JS driver reads sampled time but writes time before its direction-dependent delay.
     track.time = time + (track.speed < 0 ? -delay : delay);
-    if (delay && frame) {
+    if (delay && motionModule) {
       const pending = { time };
       pendingTimes.set(track, pending);
+      const { frame } = motionModule;
       frame.update(() => frame.postRender(() => {
         if (pendingTimes.get(track) === pending) pendingTimes.delete(track);
       }));
