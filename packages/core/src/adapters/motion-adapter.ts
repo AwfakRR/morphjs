@@ -1,6 +1,7 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
 import { toMotionEasing } from '../easing/easing';
-import { notifyControlsCanceled } from '../utils/controls';
+import { notifyControlsCanceled, onControlsCancel } from '../utils/controls';
+import { seekControlsProgress } from '../utils/deferred-controls';
 import { resolveTargets } from '../utils/targets';
 
 let motionModule: typeof import('motion') | null = null;
@@ -248,14 +249,15 @@ export const motionAdapter: IAnimationAdapter = {
 
   scroll(animationOrCallback: MorphControls | ((progress: number) => void), options?: MorphScrollOptions): MorphControls {
     const motion = getMotionSync();
-    const res = (motion as any).scroll(animationOrCallback, options);
     if (typeof animationOrCallback === 'function') {
-      return {
+      const stop = motion.scroll(animationOrCallback, options as Parameters<typeof motion.scroll>[1]);
+      const controls: MorphControls = {
         play: () => {},
         pause: () => {},
         reverse: () => {},
         cancel: () => {
-          if (typeof res === 'function') res();
+          stop?.();
+          notifyControlsCanceled(controls);
         },
         finish: () => {},
         restart: () => {},
@@ -266,8 +268,30 @@ export const motionAdapter: IAnimationAdapter = {
         then: (onfulfilled) => Promise.resolve().then(onfulfilled),
         commitStyles: () => {},
       };
+      return controls;
     }
-    return animationOrCallback;
+    const animation = animationOrCallback;
+    animation.pause();
+    const stop = motion.scroll(
+      (progress: number) => seekControlsProgress(animation, progress),
+      options as Parameters<typeof motion.scroll>[1]
+    );
+    const controls: MorphControls = Object.create(animation);
+    let tracking = true;
+    const stopTracking = () => {
+      if (!tracking) return;
+      tracking = false;
+      unsubscribe();
+      stop?.();
+      notifyControlsCanceled(controls);
+    };
+    const unsubscribe = onControlsCancel(animation, stopTracking);
+    controls.cancel = () => {
+      if (!tracking) return;
+      stopTracking();
+      animation.cancel();
+    };
+    return controls;
   },
 
   gesture(targets: MorphTargets, options?: MorphGestureOptions): { cleanup: () => void } {

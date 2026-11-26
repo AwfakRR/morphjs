@@ -1,4 +1,5 @@
 export { useAnimate } from './useAnimate';
+export { useMorphScope } from './useMorphScope';
 export { useMorphSpring } from './useMorphSpring';
 export { useGesture } from './useGesture';
 export { MorphPresence } from './MorphPresence';

@@ -2,6 +2,7 @@ import type { MorphTargets, TimelineOptions, MorphTimeline, TimelineSegment } fr
 import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
+import { notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 
 /**
  * Create an animation timeline.
@@ -16,11 +17,13 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
   const segments: TimelineSegment[] = [];
   const builderSteps: Array<(t: MorphTimeline) => void> = [];
   let realTimeline: MorphTimeline | null = null;
+  let canceled = false;
+  let autoplay = options?.autoplay !== false;
   const pendingActions: Array<(t: MorphTimeline) => void> = [];
 
   let finishedResolve: () => void;
   let finishedReject: (reason: any) => void;
-  const finished = new Promise<void>((res, rej) => {
+  let finished = new Promise<void>((res, rej) => {
     finishedResolve = res;
     finishedReject = rej;
   });
@@ -29,13 +32,16 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     for (const step of builderSteps) step(rt);
     builderSteps.length = 0;
     realTimeline = rt;
+    const stopWatchingCancel = onControlsCancel(rt, () => notifyControlsCanceled(tl));
     const id = stateManager.register(rt, 'timeline');
     rt.finished.then(
       () => {
+        stopWatchingCancel();
         stateManager.unregister(id);
         finishedResolve();
       },
       (err) => {
+        stopWatchingCancel();
         stateManager.unregister(id);
         finishedReject(err);
       }
@@ -56,6 +62,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
   /** Lazily build the real timeline from collected segments */
   const buildRealTimeline = (): MorphTimeline | null => {
+    canceled = false;
     if (realTimeline) return realTimeline;
 
     // Timeline capability routes to AnimeAdapter or GsapAdapter
@@ -70,14 +77,14 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     }
 
     try {
-      const rt = adapter.timeline(segments, options);
+      const rt = adapter.timeline(segments, autoplay ? options : { ...options, autoplay: false });
       initRealTimeline(rt);
       return rt;
     } catch {
       if (adapter.ensure) {
         adapter.ensure().then(() => {
-          if (!realTimeline && adapter.timeline) {
-            const rt = adapter.timeline(segments, options);
+          if (!canceled && !realTimeline && adapter.timeline) {
+            const rt = adapter.timeline(segments, autoplay ? options : { ...options, autoplay: false });
             initRealTimeline(rt);
           }
         });
@@ -123,11 +130,13 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
     play() {
       const rt = buildRealTimeline();
+      if (canceled) return;
       if (rt) rt.play();
       else pendingActions.push((t) => t.play());
     },
 
     pause() {
+      autoplay = false;
       if (realTimeline) realTimeline.pause();
       else pendingActions.push((t) => t.pause());
     },
@@ -139,19 +148,32 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     },
 
     cancel() {
-      if (realTimeline) realTimeline.cancel();
-      else pendingActions.push((t) => t.cancel());
+      canceled = true;
+      pendingActions.length = 0;
+      try {
+        realTimeline?.cancel();
+      } finally {
+        notifyControlsCanceled(tl);
+      }
     },
 
     finish() {
-      if (realTimeline) realTimeline.finish();
+      if (canceled) return;
+      autoplay = false;
+      const rt = buildRealTimeline();
+      if (rt) rt.finish();
       else pendingActions.push((t) => t.finish());
     },
 
     restart() {
       const rt = buildRealTimeline();
-      if (rt) rt.restart();
-      else pendingActions.push((t) => t.restart());
+      const restart = (timeline: MorphTimeline) => {
+        const completed = timeline.playState === 'finished';
+        timeline.restart();
+        if (completed) finished = timeline.finished;
+      };
+      if (rt) restart(rt);
+      else pendingActions.push(restart);
     },
 
     seek(time: number) {
@@ -179,13 +201,15 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     },
 
     get duration() {
-      if (!realTimeline && (segments.length > 0 || builderSteps.length > 0)) {
+      if (!canceled && !realTimeline && (segments.length > 0 || builderSteps.length > 0)) {
         buildRealTimeline();
       }
       return realTimeline ? realTimeline.duration : 0;
     },
 
-    finished,
+    get finished() {
+      return finished;
+    },
 
     then(onFulfilled, onRejected) {
       return finished.then(onFulfilled, onRejected);
@@ -194,9 +218,9 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
   // Auto-play unless explicitly disabled — deferred by one microtask
   // so the builder pattern can collect segments synchronously first
-  if (options?.autoplay !== false) {
+  if (autoplay) {
     Promise.resolve().then(() => {
-      tl.play();
+      if (autoplay && !canceled) tl.play();
     });
   }
 

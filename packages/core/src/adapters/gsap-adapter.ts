@@ -305,11 +305,14 @@ export const gsapAdapter: IAnimationAdapter = {
         onUpdate: (self: { progress: number }) => animationOrCallback(self.progress),
       });
 
-      return {
+      const controls: MorphControls = {
         play: () => {},
         pause: () => {},
         reverse: () => {},
-        cancel: () => trigger.kill(),
+        cancel: () => {
+          trigger.kill();
+          notifyControlsCanceled(controls);
+        },
         finish: () => {},
         restart: () => {},
         seek: () => {},
@@ -320,6 +323,7 @@ export const gsapAdapter: IAnimationAdapter = {
         then: (fn) => Promise.resolve().then(fn),
         commitStyles: () => {},
       };
+      return controls;
     }
 
     let attached = false;

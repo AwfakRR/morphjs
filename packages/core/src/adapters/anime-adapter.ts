@@ -49,6 +49,14 @@ export function getAnimeSync(): Record<string, any> {
  * Anime.js uses milliseconds and 0-100 progress; MorphJS uses seconds and 0-1.
  */
 export function wrapAnimeControls(animeAnimation: any): MorphControls {
+  let finished: Promise<void> | undefined;
+  let resolveFinished: (() => void) | undefined;
+  const onComplete = animeAnimation.onComplete;
+  animeAnimation.onComplete = (animation: unknown) => {
+    resolveFinished?.();
+    resolveFinished = undefined;
+    onComplete.call(animeAnimation, animation);
+  };
   const controls: MorphControls = {
     play: () => animeAnimation.play(),
     pause: () => animeAnimation.pause(),
@@ -79,7 +87,12 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       return (animeAnimation.currentTime || 0) / 1000; // ms → seconds
     },
     get finished() {
-      return Promise.resolve(animeAnimation);
+      if (!finished || (!resolveFinished && !animeAnimation.completed)) {
+        finished = animeAnimation.completed
+          ? Promise.resolve()
+          : new Promise<void>(resolve => { resolveFinished = resolve; });
+      }
+      return finished;
     },
     get playState() {
       if (animeAnimation.completed) return 'finished' as const;
@@ -90,7 +103,7 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       /* Anime.js commits styles inline by default */
     },
     then(onfulfilled, onrejected) {
-      return Promise.resolve(animeAnimation).then(onfulfilled, onrejected);
+      return controls.finished.then(onfulfilled, onrejected);
     },
   };
   return controls;
@@ -241,14 +254,20 @@ export const animeAdapter: IAnimationAdapter = {
       };
 
     // Extend with timeline-specific methods
-    return {
+    const timeline: MorphTimeline = {
       ...controls,
       play: syncPlayhead(controls.play),
       seek: syncPlayhead(controls.seek!, true),
-      cancel: syncPlayhead(controls.cancel, true),
+      cancel: syncPlayhead(() => {
+        controls.cancel();
+        notifyControlsCanceled(timeline);
+      }, true),
       finish: syncPlayhead(controls.finish),
       restart: syncPlayhead(controls.restart, true),
       reverse: syncPlayhead(controls.reverse),
+      get finished() {
+        return controls.finished;
+      },
       get duration() {
         return (tl.duration || 0) / 1000;
       },
@@ -289,6 +308,7 @@ export const animeAdapter: IAnimationAdapter = {
         return this;
       },
     };
+    return timeline;
   },
 
   stagger(value: number, options?: MorphStaggerOptions): any {

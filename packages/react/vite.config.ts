@@ -10,6 +10,7 @@ export default defineConfig({
     dts({
       tsconfigPath: resolve(__dirname, 'tsconfig.json'),
       entryRoot: 'src',
+      aliasesExclude: ['morphjs'],
     })
   ],
   build: {

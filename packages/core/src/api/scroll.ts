@@ -3,9 +3,16 @@ import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
+import { motionAdapter } from '../adapters/motion-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
-import { createNoopControls } from '../utils/controls';
+import { createNoopControls, notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 import { inView } from './in-view';
+
+const scrollTrackingControls = new WeakSet<MorphControls>();
+
+export function isScrollTracking(controls: MorphControls): boolean {
+  return scrollTrackingControls.has(controls);
+}
 
 /**
  * Create a scroll-linked animation.
@@ -62,11 +69,15 @@ function trackScroll(
     eventTarget.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
 
-    return {
+    const controls: MorphControls = {
       ...createNoopControls(),
-      cancel: () => eventTarget.removeEventListener('scroll', onScroll),
+      cancel: () => {
+        eventTarget.removeEventListener('scroll', onScroll);
+        notifyControlsCanceled(controls);
+      },
       playState: 'running',
     };
+    return controls;
   };
 
   let controls: MorphControls;
@@ -78,7 +89,26 @@ function trackScroll(
       controls = fallback();
     } else {
       const deferred = createDeferredControls();
+      let canceled = false;
+      const motionAnimation = adapter === motionAdapter && typeof animationOrCallback !== 'function'
+        ? animationOrCallback : undefined;
+      const stopWatchingAnimation = motionAnimation && onControlsCancel(motionAnimation, () => {
+        canceled = true;
+        deferred.controls.cancel();
+      });
+      const stopWatchingLink = onControlsCancel(deferred.controls, () => {
+        const wasCanceled = canceled;
+        canceled = true;
+        stopWatchingAnimation?.();
+        if (!wasCanceled) motionAnimation?.cancel();
+      });
+      const detach = () => {
+        stopWatchingAnimation?.();
+        stopWatchingLink();
+      };
       void ensure().then(() => {
+        detach();
+        if (canceled) return;
         if (!adapter.scroll) return deferred.resolve(fallback());
         let result: MorphControls;
         try {
@@ -87,10 +117,15 @@ function trackScroll(
           result = fallback();
         }
         deferred.resolve(result);
-      }, () => deferred.resolve(fallback())).catch(deferred.reject);
+      }, () => {
+        detach();
+        if (!canceled) deferred.resolve(fallback());
+      }).catch(deferred.reject);
       controls = deferred.controls;
     }
   }
+
+  if (controls !== animationOrCallback) scrollTrackingControls.add(controls);
 
   const target = options?.target || document.documentElement;
   stateManager.register(controls, target);

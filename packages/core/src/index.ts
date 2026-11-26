@@ -7,8 +7,10 @@ export { scroll } from './api/scroll';
 export type { MorphInViewOptions } from './api/in-view';
 export { gesture } from './api/gesture';
 export { svg } from './api/svg';
+export { createScope } from './api/scope';
 
 // Types (re-export all)
+export type { MorphScope } from './api/scope';
 export type { 
   MorphControls, MorphTimeline, MorphAnimationOptions, MorphSpringOptions,
   MorphStaggerOptions, MorphScrollOptions, MorphGestureOptions, MorphSvgOptions,
@@ -42,6 +44,7 @@ import { stagger } from './api/stagger';
 import { scroll } from './api/scroll';
 import { gesture } from './api/gesture';
 import { svg } from './api/svg';
+import { createScope } from './api/scope';
 import { configure, getConfig } from './router';
 import { stateManager } from './state';
 import { animationEvents } from './events';
@@ -93,6 +96,7 @@ export interface MorphCallable {
   scroll: typeof scroll;
   gesture: typeof gesture;
   svg: typeof svg;
+  scope: typeof createScope;
   configure: typeof configure;
   getConfig: typeof getConfig;
   state: typeof stateManager;
@@ -111,6 +115,7 @@ export const morph: MorphCallable = Object.assign(
     scroll,
     gesture,
     svg,
+    scope: createScope,
     configure,
     getConfig,
     state: stateManager,
@@ -120,4 +125,3 @@ export const morph: MorphCallable = Object.assign(
 );
 
 export default morph;
-

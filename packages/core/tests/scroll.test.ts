@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { animate, configure, scroll, stateManager } from '../src/index';
+import { animate, configure, createScope, motionAdapter, scroll, stateManager } from '../src/index';
 import { createDeferredControls } from '../src/utils/deferred-controls';
 import { createNoopControls } from '../src/utils/controls';
 
@@ -36,6 +36,62 @@ describe('core scroll routing', () => {
     await controls.finished;
     expect(motionScroll).toHaveBeenCalledWith(callback, undefined);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each(['motion', 'gsap'])('cleans up scoped %s scroll subscriptions after they are ready', async engine => {
+    const stop = vi.fn();
+    motionScroll.mockReturnValue(stop);
+    create.mockReturnValue({ kill: stop });
+    const scope = createScope();
+    const first = scope.scroll(vi.fn(), { engine });
+    const second = scope.scroll(vi.fn(), { engine });
+    await Promise.all([first.finished, second.finished]);
+    expect(scope.size).toBe(2);
+    first.cancel();
+    expect(scope.size).toBe(1);
+    scope.revert();
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('drives and stops a Motion scroll-linked animation through its core controls', async () => {
+    const stop = vi.fn();
+    motionScroll.mockReturnValue(stop);
+    const pause = vi.fn();
+    const seek = vi.fn();
+    const cancel = vi.fn();
+    const scope = createScope();
+    const controls = scope.scroll({ ...createNoopControls(), duration: 2, pause, seek, cancel });
+    await controls.finished;
+
+    motionScroll.mock.lastCall![0](0.4);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(seek).toHaveBeenCalledWith(0.8);
+    scope.revert();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it('does not attach a native fallback or call a scoped callback after teardown during adapter loading', async () => {
+    const win = new EventTarget();
+    vi.stubGlobal('window', win);
+    const add = vi.spyOn(win, 'addEventListener');
+    const error = new Error('Motion is not installed');
+    const attach = vi.spyOn(motionAdapter, 'scroll').mockImplementationOnce(() => { throw error; });
+    const load = vi.spyOn(motionAdapter, 'ensure').mockRejectedValueOnce(error);
+    const callback = vi.fn();
+    const scope = createScope();
+
+    try {
+      scope.scroll(callback);
+      expect(load).toHaveBeenCalledOnce();
+      scope.revert();
+      await load.mock.results[0].value.catch(() => {});
+      expect(callback).not.toHaveBeenCalled();
+      expect(add).not.toHaveBeenCalled();
+    } finally {
+      attach.mockRestore();
+      load.mockRestore();
+    }
   });
 
   it('honors a configured GSAP adapter for plain callback tracking', async () => {
