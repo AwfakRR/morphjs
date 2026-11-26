@@ -47,6 +47,25 @@ describe('MorphJS Stripped API', () => {
     expect(stag(0, 5)).toBe(0.2);
   });
 
+  it('should stagger a 6×6 grid from the four middle cells, not the row ends', () => {
+    const delay = stagger(0.04, { from: 'center', grid: [6, 6] });
+    const delays = Array.from({ length: 36 }, (_, i) => delay(i, 36));
+    const earliest = Math.min(...delays);
+
+    expect(delays.flatMap((delay, i) => delay === earliest ? [i] : [])).toEqual([14, 15, 20, 21]);
+    for (const corner of [0, 5, 30, 35]) {
+      expect(delays[corner]).toBeCloseTo(0.04 * Math.hypot(2.5, 2.5));
+    }
+  });
+
+  it('should respect the dimensions and start offset of a rectangular grid', () => {
+    const delay = stagger(0.1, { from: 'center', grid: [5, 3], start: 0.2 });
+
+    expect(delay(7, 15)).toBe(0.2);
+    expect(delay(2, 15)).toBeCloseTo(0.3);
+    expect(delay(5, 15)).toBeCloseTo(0.4);
+  });
+
   it('should return controls for scroll in node environment', () => {
     const controls = scroll(() => {});
     expect(controls).toBeDefined();

@@ -126,7 +126,15 @@ export function stagger(v: number, o?: MorphStaggerOptions): any {
   return (i: number, t = 1): number => {
     let ei = i;
     if (o?.from === 'last') ei = t - 1 - i;
-    else if (o?.from === 'center') ei = Math.abs(i - (t - 1) / 2);
+    else if (o?.from === 'center') {
+      const grid = o.grid;
+      if (grid?.length === 2) {
+        const [columns, rows] = grid;
+        ei = Math.hypot(i % columns - (columns - 1) / 2, Math.floor(i / columns) - (rows - 1) / 2);
+      } else {
+        ei = Math.abs(i - (t - 1) / 2);
+      }
+    }
     else if (o?.from === 'random') ei = Math.random() * t;
     else if (typeof o?.from === 'number') ei = Math.abs(i - o.from);
     return (typeof o?.start === 'number' ? o.start : 0) + ei * v;
