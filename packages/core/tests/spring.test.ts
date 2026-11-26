@@ -63,4 +63,20 @@ describe('Motion springs', () => {
     expect(Math.max(...values)).toBeGreaterThan(100);
     expect(values.at(-1)).toBe(40);
   });
+
+  it('starts a staged spring at its first keyframe rather than the current value', async () => {
+    const proxy = { val: 0 };
+    const values: number[] = [];
+    const controls = animate(proxy as any, { val: [-100, 30, 0] }, {
+      spring: true,
+      onUpdate: () => values.push(proxy.val),
+    });
+
+    await vi.advanceTimersByTimeAsync(4000);
+    await controls.finished;
+
+    expect(Math.abs(values[0] + 100)).toBeLessThan(5);
+    expect(values).toContain(30);
+    expect(values.at(-1)).toBe(0);
+  });
 });
