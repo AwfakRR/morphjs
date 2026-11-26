@@ -82,17 +82,32 @@ describe('Motion springs', () => {
   });
 
   it.each([
-    ['single-stage', 100],
-    ['staged', [0, 100, 40]],
-  ])('unregisters a canceled %s spring without completing it', async (_, val) => {
+    { name: 'single-stage spring', val: 100 },
+    { name: 'staged spring (first stage)', val: [0, 100, 40] },
+    { name: 'staged spring (second stage)', val: [0, 100, 40], secondStage: true },
+    { name: 'Motion tween', val: 100, tween: true },
+  ])('unregisters a canceled $name without completing it', async ({ val, secondStage, tween }) => {
     const proxy = { val: 0 };
     const onComplete = vi.fn();
     animationEvents.on('complete', onComplete);
 
     try {
-      const controls = spring(proxy as any, { val });
+      const controls = tween
+        ? animate(proxy as any, { val }, { duration: 1 })
+        : spring(proxy as any, { val }, { stiffness: 100, damping: 20 });
       await vi.advanceTimersByTimeAsync(64);
       expect(proxy.val).toBeGreaterThan(0);
+      if (secondStage) {
+        let reachedMiddle = false;
+        for (let frame = 0; frame < 250; frame++) {
+          await vi.advanceTimersByTimeAsync(16);
+          if (proxy.val === 100) reachedMiddle = true;
+          else if (reachedMiddle && proxy.val < 100) break;
+        }
+        expect(reachedMiddle).toBe(true);
+        expect(proxy.val).toBeLessThan(100);
+        expect(proxy.val).toBeGreaterThan(40);
+      }
       expect(stateManager.getRunning()).toContainEqual(expect.objectContaining({ controls, targets: proxy }));
 
       controls.cancel();
@@ -101,18 +116,20 @@ describe('Motion springs', () => {
       await vi.advanceTimersByTimeAsync(4000);
       expect(stillTracked).toBe(false);
       expect(onComplete).not.toHaveBeenCalled();
+      expect(proxy.val).not.toBe(Array.isArray(val) ? val.at(-1) : val);
     } finally {
       animationEvents.off('complete', onComplete);
       stateManager.cancelFor(proxy as any);
     }
   });
 
-  it('unregisters a spring canceled while its advanced stagger is loading', async () => {
+  it.each(['Motion spring', 'Anime tween'])('unregisters a %s canceled while its advanced stagger resolves', async (kind) => {
     await ensureAnime();
     const proxy = { val: 0 };
-    const controls = spring(proxy as any, { val: 100 }, undefined, {
-      delay: stagger(0.1, { grid: [1, 1] }),
-    });
+    const delay = stagger(0.1, { grid: [1, 1] });
+    const controls = kind === 'Motion spring'
+      ? spring(proxy as any, { val: 100 }, undefined, { delay })
+      : animate(proxy as any, { val: 100 }, { engine: 'anime', duration: 1, delay });
 
     try {
       expect(stateManager.getRunning()).toContainEqual(expect.objectContaining({ controls, targets: proxy }));
