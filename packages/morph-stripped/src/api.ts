@@ -7,7 +7,11 @@ import { loadMotion, loadAnime, loadGsap, wrap, createDeferred, toAnimeOptions, 
 
 export type AnimateArg = MorphAnimationOptions | number;
 
+const noop = () => {};
+const mkd = (cancel?: () => void): MorphControls => ({ play: noop, pause: noop, reverse: noop, cancel: cancel ?? noop, finish: noop, restart: noop, seek: noop, progress: 0, currentTime: 0, playState: cancel ? 'running' : 'idle', finished: Promise.resolve(), then: (f) => Promise.resolve().then(f), commitStyles: noop });
+
 export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: AnimateArg): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
   const e = o.engine || o.adapter;
   if (e === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
@@ -18,6 +22,7 @@ export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: An
 }
 
 export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: MorphSpringOptions): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   return createDeferred(loadMotion, (m) => runSpring(m, tgts, props, opt));
 }
 
@@ -106,10 +111,8 @@ export function stagger(v: number, o?: MorphStaggerOptions): any {
   };
 }
 
-const noop = () => {};
-const mkd = (c: any) => ({ play: noop, pause: noop, reverse: noop, cancel: c, finish: noop, restart: noop, seek: noop, progress: 0, currentTime: 0, playState: 'running' as const, finished: Promise.resolve(), then: (f: any) => Promise.resolve().then(f), commitStyles: noop });
-
 export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOptions): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   if (o?.pin || o?.scrub || o?.engine === 'gsap') {
     return createDeferred(() => loadGsap().catch(() => loadMotion()), (m) => {
       if (m.gsap && m.ScrollTrigger) {

@@ -2,30 +2,8 @@ import type { MorphTargets, MorphAnimationOptions, MorphScrollOptions, MorphCont
 import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
+import { createNoopControls } from '../utils/controls';
 import { animate } from './animate';
-
-/**
- * Creates a no-op MorphControls instance for SSR fallbacks.
- */
-export function createNoopControls(): MorphControls {
-  return {
-    play: () => {},
-    pause: () => {},
-    reverse: () => {},
-    cancel: () => {},
-    finish: () => {},
-    restart: () => {},
-    progress: 0,
-    currentTime: 0,
-    playState: 'idle',
-    finished: Promise.resolve(),
-    then: function(onFulfilled) {
-      if (onFulfilled) onFulfilled();
-      return Promise.resolve();
-    },
-    commitStyles: () => {}
-  };
-}
 
 /**
  * Create a scroll-linked animation.
