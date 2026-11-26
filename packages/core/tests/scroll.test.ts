@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { animate, scroll, stateManager } from '../src/index';
+import { animate, configure, scroll, stateManager } from '../src/index';
 import { createDeferredControls } from '../src/utils/deferred-controls';
 import { createNoopControls } from '../src/utils/controls';
 
@@ -25,6 +25,7 @@ describe('core scroll routing', () => {
 
   afterEach(() => {
     stateManager.cancelAll();
+    configure({ defaultAdapter: undefined });
     vi.resetAllMocks();
     vi.unstubAllGlobals();
   });
@@ -37,9 +38,27 @@ describe('core scroll routing', () => {
     expect(create).not.toHaveBeenCalled();
   });
 
+  it('honors a configured GSAP adapter for plain callback tracking', async () => {
+    configure({ defaultAdapter: 'gsap' });
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn()).finished;
+    expect(create).toHaveBeenCalledOnce();
+    expect(motionScroll).not.toHaveBeenCalled();
+  });
+
+  it.each([{ engine: 'motion' }, { adapter: 'motion' }])('respects an explicit %o', async override => {
+    configure({ defaultAdapter: 'gsap' });
+    const callback = vi.fn();
+    const options = { ...override, target, pin: true, scrub: true };
+    await scroll(callback, options).finished;
+    expect(motionScroll).toHaveBeenCalledWith(callback, options);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it.each([{ pin: true }, { scrub: 0.5 }, { pin: true, scrub: true }])(
     'routes callback tracking with %o to GSAP and forwards the options',
     async options => {
+      configure({ defaultAdapter: 'motion' });
       const kill = vi.fn();
       create.mockReturnValue({ kill });
       const callback = vi.fn();
