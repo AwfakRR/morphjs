@@ -132,7 +132,7 @@ describe('core scroll routing', () => {
       const controls = scroll(vi.fn(), { pin: true });
       await controls.finished;
       expect(create).toHaveBeenCalledWith(expect.objectContaining({
-        trigger: root, pin: false, start: 'top top', end: 'bottom bottom',
+        trigger: root, pin: false, start: 0, end: 'max',
       }));
       expect(warn).toHaveBeenCalledOnce();
     } finally {
@@ -173,6 +173,14 @@ describe('core scroll routing', () => {
     create.mockReturnValue({ kill: vi.fn() });
     await scroll(vi.fn(), { target, container, pin: true, axis: 'x', offset: [...offset] }).finished;
     expect(create).toHaveBeenCalledWith(expect.objectContaining({ horizontal: true, start, end }));
+  });
+
+  it('tracks the full horizontal range when a scroller has no target', async () => {
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), { container, axis: 'x', scrub: true }).finished;
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      scroller: container, horizontal: true, start: 0, end: 'max',
+    }));
   });
 
   it('resolves viewport units as pixels on ScrollTrigger refresh', async () => {
