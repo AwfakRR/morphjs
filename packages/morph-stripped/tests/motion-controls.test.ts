@@ -216,6 +216,7 @@ it.each(['play', 'reverse'] as const)('keeps a finished delayed track at its end
     expect(controls.currentTime).toBeLessThan(1.016);
 
     controls[resume]();
+    if (resume === 'reverse') expect(controls.currentTime).toBeCloseTo(1, 4);
     await vi.advanceTimersByTimeAsync(160);
 
     if (resume === 'reverse') {

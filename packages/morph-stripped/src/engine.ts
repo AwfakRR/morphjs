@@ -76,7 +76,11 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
       const driver = driverOf(track);
       if (resuming && state === 'finished' && isJs(driver)) continue;
       const delay = delayOf(driver);
-      const time = legacyEnds?.get(track) ?? readTime(track, driver, delay);
+      // A JS track can finish on a frame past its endpoint. Reversing above it renders the delay frame.
+      const end = backward && state === 'finished' && speed >= 0 && isJs(driver)
+        ? driver.totalDuration ?? driver.resolved?.totalDuration
+        : undefined;
+      const time = end == null ? legacyEnds?.get(track) ?? readTime(track, driver, delay) : end / 1000;
       legacyEnds?.delete(track);
       if (backward) track.speed = -Math.abs(speed || 1);
       const running = state === 'running';
