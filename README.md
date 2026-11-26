@@ -8,7 +8,7 @@
 *Combines the GPU spring/gesture power of **Motion.js**, the lightweight timeline/SVG magic of **Anime.js v4**, and the heavy-duty specialist muscle of **GSAP v3**.*
 
 [![Version](https://img.shields.io/npm/v/morphjs?style=flat-square&color=6366f1)](https://www.npmjs.com/package/morphjs)
-[![Bundle Size](https://img.shields.io/badge/bundle%20size-3.94%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morphjs)
+[![Bundle Size](https://img.shields.io/badge/bundle%20size-~5%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
 [![AI Agents](https://img.shields.io/badge/AI%20Agents-AGENTS.md-6366f1?style=flat-square)](AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -40,10 +40,10 @@ MorphJS comes in two editions tailored to your architecture:
 
 1. **`morph-stripped`** (*Recommended*)  
    The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
-   - **Size:** `13.23 KB raw` / `3.94 KB gzip`
+   - **Size:** `~17 KB raw` / `~5 KB gzip`
 2. **`morphjs`** (Core)  
    The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
-   - **Size:** `31.00 KB raw` / `7.97 KB gzip`
+   - **Size:** `~35 KB raw` / `~9 KB gzip`
 
 ### Framework Bindings
 - **`@morphjs/react`**: `useAnimate`, `useMorphSpring`, `useGesture`, `<MorphPresence>`
