@@ -11,33 +11,13 @@ export interface MorphTransitionProps {
 }
 
 export const MorphTransition: FunctionalComponent<MorphTransitionProps> = (props, { slots }) => {
-  const onEnter = (el: Element, done: () => void) => {
-    if (!props.enter) {
+  const createHook = (phase?: Record<string, any>) => (el: Element, done: () => void) => {
+    if (!phase) {
       done();
       return;
     }
-    const options = { ...props.enter };
-    if (props.duration !== undefined && options.duration === undefined) {
-      options.duration = props.duration;
-    }
-    const anim = animate(el, options);
-    if (anim && typeof anim.then === 'function') {
-      anim.then(done);
-    } else {
-      done();
-    }
-  };
-
-  const onLeave = (el: Element, done: () => void) => {
-    if (!props.leave) {
-      done();
-      return;
-    }
-    const options = { ...props.leave };
-    if (props.duration !== undefined && options.duration === undefined) {
-      options.duration = props.duration;
-    }
-    const anim = animate(el, options);
+    const { duration = props.duration, ...keyframes } = phase;
+    const anim = animate(el, keyframes, { duration, spring: props.spring });
     if (anim && typeof anim.then === 'function') {
       anim.then(done);
     } else {
@@ -51,8 +31,8 @@ export const MorphTransition: FunctionalComponent<MorphTransitionProps> = (props
       css: false,
       mode: props.mode,
       appear: props.appear,
-      onEnter,
-      onLeave,
+      onEnter: createHook(props.enter),
+      onLeave: createHook(props.leave),
     },
     slots
   );
