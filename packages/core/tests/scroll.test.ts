@@ -174,6 +174,23 @@ describe('core scroll routing', () => {
     }));
   });
 
+  it.each(['implicit', 'body', 'root'] as const)('excludes the vertical scrollbar from horizontal page pin travel (%s)', async scroller => {
+    const viewport = { ...root, clientWidth: 1145 } as Element;
+    const body = { clientWidth: 3700 } as Element;
+    vi.stubGlobal('document', { documentElement: viewport, body });
+    vi.stubGlobal('window', { innerWidth: 1160 });
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), {
+      target, container: scroller === 'body' ? body : scroller === 'root' ? viewport : undefined,
+      axis: 'x', pin: true,
+    }).finished;
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      horizontal: true, start: 'left left', end: expect.any(Function),
+    }));
+    const [{ end }] = create.mock.lastCall!;
+    expect(end()).toBe('clamp(left left-=1145px)');
+  });
+
   it.each([
     { offset: ['start end', 'end start'] as const, start: 'left right', end: 'right left' },
     { offset: [0.25, '80% 20px'] as const, start: '25% 25%', end: '80% 20px' },
