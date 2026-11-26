@@ -130,7 +130,7 @@ export function toGsapOptions(props: Record<string, any>, opt?: any): Record<str
 export function runSpring(motion: any, tgts: any, kf: any, opt?: MorphSpringOptions): MorphControls {
   let seq = false, s1: any = {}, s2: any = {};
   for (const [k, v] of Object.entries(kf)) {
-    if (Array.isArray(v) && v.length > 2) { seq = true; s1[k] = v[1]; s2[k] = v[v.length - 1]; }
+    if (Array.isArray(v) && v.length > 2) { seq = true; s1[k] = [v[0], v[1]]; s2[k] = v[v.length - 1]; }
     else s1[k] = v;
   }
   if (!seq) return wrap(motion.animate(tgts, kf, { ...opt, type: 'spring' }), 'm');
