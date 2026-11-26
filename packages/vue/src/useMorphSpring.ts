@@ -28,7 +28,7 @@ export function useMorphSpring(
       proxy as any,
       { val: next },
       {
-        spring: springOptions,
+        spring: springOptions ?? true,
         onUpdate: () => {
           value.value = proxy.val;
         }

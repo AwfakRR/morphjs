@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { animeAdapter, animationEvents, gsapAdapter, motionAdapter, svg } from '../src/index';
-import { createNoopControls } from '../src/api/scroll';
+import { createNoopControls } from '../src/utils/controls';
 
 const gsap = vi.hoisted(() => ({
   to: vi.fn(() => ({})),

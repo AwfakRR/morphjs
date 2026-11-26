@@ -1,7 +1,7 @@
 import type { MorphTargets, MorphSvgOptions, MorphControls, MorphAnimationOptions } from '../types';
 import { resolveTargets } from '../utils/targets';
+import { createNoopControls } from '../utils/controls';
 import { animateSvg } from './animate';
-import { createNoopControls } from './scroll';
 
 /**
  * SVG animation utilities — morph paths, draw strokes, animate attributes.

@@ -1,5 +1,6 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
 import { toMotionEasing } from '../easing/easing';
+import { resolveTargets } from '../utils/targets';
 
 let motionModule: typeof import('motion') | null = null;
 let motionLoadPromise: Promise<typeof import('motion')> | null = null;
@@ -83,18 +84,24 @@ export const motionAdapter: IAnimationAdapter = {
     return wrapMotionControls(animation);
   },
 
-  spring: (targets: any, keyframes: any, options?: MorphSpringOptions) => {
+  spring: (targets: any, keyframes: any, springOptions: MorphSpringOptions, options?: MorphAnimationOptions) => {
     const motion = getMotionSync();
+    const onUpdate = options?.onUpdate;
+    const transition = {
+      ...springOptions,
+      type: 'spring' as const,
+      onUpdate: onUpdate ? (value: number) => motion.frame.postRender(() => onUpdate(value)) : undefined,
+    };
     let seq = false, s1: any = {}, s2: any = {};
     for (const [k, v] of Object.entries(keyframes)) {
       if (Array.isArray(v) && v.length > 2) { seq = true; s1[k] = v[1]; s2[k] = v[v.length - 1]; }
       else s1[k] = v;
     }
-    if (!seq) return wrapMotionControls(motion.animate(targets, keyframes, { ...options, type: 'spring' } as any));
+    if (!seq) return wrapMotionControls(motion.animate(targets, keyframes, transition));
 
-    const c1 = wrapMotionControls(motion.animate(targets, s1, { ...options, type: 'spring' } as any));
+    const c1 = wrapMotionControls(motion.animate(targets, s1, transition));
     let c2: any, cx = false;
-    const fin = c1.finished.then(() => cx ? undefined : (c2 = wrapMotionControls(motion.animate(targets, s2, { ...options, type: 'spring' } as any)), c2.finished));
+    const fin = c1.finished.then(() => cx ? undefined : (c2 = wrapMotionControls(motion.animate(targets, s2, transition)), c2.finished));
 
     return new Proxy({} as MorphControls, {
       get: (_, p) => {
@@ -136,22 +143,21 @@ export const motionAdapter: IAnimationAdapter = {
 
   gesture(targets: MorphTargets, options?: MorphGestureOptions): { cleanup: () => void } {
     const motion = getMotionSync();
+    const elements = resolveTargets(targets);
     const cleanups: Array<() => void> = [];
 
-    if (options?.hover && (motion as any).hover) {
-      const cleanup = (motion as any).hover(targets, {
-        onHoverStart: options.onHoverStart,
-        onHoverEnd: options.onHoverEnd,
-      });
-      if (typeof cleanup === 'function') cleanups.push(cleanup);
+    if (options?.hover && motion.hover) {
+      cleanups.push(motion.hover(elements, (_, event) => {
+        options.onHoverStart?.(event);
+        return endEvent => options.onHoverEnd?.(endEvent);
+      }));
     }
 
-    if (options?.press && (motion as any).press) {
-      const cleanup = (motion as any).press(targets, {
-        onPressStart: options.onPressStart,
-        onPressEnd: options.onPressEnd,
-      });
-      if (typeof cleanup === 'function') cleanups.push(cleanup);
+    if (options?.press && motion.press) {
+      cleanups.push(motion.press(elements, (_, event) => {
+        options.onPressStart?.(event);
+        return endEvent => options.onPressEnd?.(endEvent);
+      }));
     }
 
     return {

@@ -10,6 +10,14 @@ describe('MorphJS Stripped API', () => {
     expect(typeof controls.pause).toBe('function');
   });
 
+  it.each([['animate', morph.animate], ['spring', spring]] as const)(
+    'should resolve %s completion in node environment',
+    async (_, animate) => {
+      const controls = animate({ style: {} } as any, { opacity: 1 });
+      await expect(controls.finished).resolves.toBeUndefined();
+    },
+  );
+
   it('should expose sub-APIs on morph function', () => {
     expect(typeof morph.animate).toBe('function');
     expect(typeof morph.timeline).toBe('function');
@@ -43,6 +51,11 @@ describe('MorphJS Stripped API', () => {
     const controls = scroll(() => {});
     expect(controls).toBeDefined();
     expect(typeof controls.cancel).toBe('function');
+  });
+
+  it('should resolve scroll completion in node environment', async () => {
+    const controls = scroll(() => {});
+    await expect(controls.finished).resolves.toBeUndefined();
   });
 
   it('should return cleanup for gesture in node environment', () => {

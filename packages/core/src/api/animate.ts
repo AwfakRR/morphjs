@@ -2,6 +2,7 @@
 import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls, MorphSvgOptions } from '../types';
 import { resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
+import { createNoopControls } from '../utils/controls';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 
@@ -13,15 +14,12 @@ export interface AnimateOptions extends MorphAnimationOptions {
 
 export type AnimateArg = number | AnimateOptions;
 
-function createDeferredControls(): { controls: MorphControls; resolve: (controls: MorphControls | null) => void } {
-  let real: MorphControls | null | undefined;
+function createDeferredControls(): { controls: MorphControls; resolve: (controls: MorphControls) => void } {
+  let real: MorphControls | null = null;
   const q: Array<(c: MorphControls) => void> = [];
   let res: () => void, rej: (err: any) => void;
   const finished = new Promise<void>((r, e) => { res = r; rej = e; });
-  const run = (fn: (c: MorphControls) => void) => {
-    if (real) fn(real);
-    else if (real === undefined) q.push(fn);
-  };
+  const run = (fn: (c: MorphControls) => void) => (real ? fn(real) : q.push(fn));
 
   const controls: MorphControls = {
     play: () => run(c => c.play()),
@@ -41,14 +39,10 @@ function createDeferredControls(): { controls: MorphControls; resolve: (controls
 
   return {
     controls,
-    resolve: (c) => {
+    resolve: (c: MorphControls) => {
       real = c;
-      if (c) {
-        c.finished.then(res, rej);
-        q.forEach(fn => fn(c));
-      } else {
-        res();
-      }
+      c.finished.then(res, rej);
+      q.forEach(fn => fn(c));
       q.length = 0;
     },
   };
@@ -87,6 +81,10 @@ function runAnimation(
   options: AnimateArg,
   useSvg = false
 ): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return createNoopControls();
+  }
+
   const opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
@@ -142,7 +140,7 @@ function runAnimation(
             // No usable tween adapter.
           }
         }
-        if (useSvg) resolve(null);
+        if (useSvg) resolve(createNoopControls());
         console.error('[MorphJS] Deferred animation failed:', err);
       }
     };
