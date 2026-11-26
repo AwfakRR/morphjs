@@ -62,7 +62,7 @@ function animeOffset(tl: any, position?: Position, segment?: AnimeSegment): numb
     const relative = /^(.+)?([+*-])=([^=]+)$/.exec(String(position));
     const label = relative ? relative[1] : position;
     const offset = typeof label === 'string' && label.startsWith('<')
-      ? (segment.previous ? animeOffset(tl, label.startsWith('<<') ? '<<' : '<') - segment.start : NaN)
+      ? (segment.previous ? animeOffset(tl, label.startsWith('<<') ? '<<' : '<') - segment.start : 0)
       : label === undefined ? segment.duration : segment.labels[label] ?? (relative ? NaN : segment.duration);
     const value = Number(relative?.[3]);
     return relative ? relative[2] === '*' ? offset * value : offset + (relative[2] === '+' ? value : -value)

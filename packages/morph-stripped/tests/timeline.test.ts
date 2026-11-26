@@ -496,3 +496,19 @@ it('measures nested Anime segments and labels independently of longer host track
     parent.cancel();
   }
 });
+
+it.each([['<<', 0], ['<<+=0.25', 0.25]] as const)('starts a nested Anime segment at %s without a previous track', async (position, gap) => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' }, position);
+  const parent = timeline({ autoplay: false }).add(child, 0.5);
+
+  try {
+    parent.seek(1 + gap);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1 + gap));
+    expect(child.duration).toBeCloseTo(1 + gap);
+    expect(target.x).toBeCloseTo(50);
+  } finally {
+    parent.cancel();
+  }
+});
