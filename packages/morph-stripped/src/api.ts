@@ -14,11 +14,18 @@ export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: An
   if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
   const e = o.engine || o.adapter;
+  const startMotion = () => createDeferred(loadMotion, (m) => {
+    // Preserve which options Motion sees when resolving default timing.
+    const transition = Object.prototype.propertyIsEnumerable.call(o, 'onCancel')
+      ? { ...o, onCancel: undefined }
+      : o;
+    return wrap(m.animate(tgts, props, transition), 'm', m.frame, o.onCancel);
+  });
   if (e === 'gsap') return createDeferred(() => loadGsapFor(props), ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
-  if (e === 'motion') return createDeferred(loadMotion, (m) => wrap(m.animate(tgts, props, o), 'm'));
+  if (e === 'motion') return startMotion();
   if (e === 'anime' || 'd' in props || 'strokeDashoffset' in props || o.repeat !== undefined)
     return createDeferred(loadAnime, (a) => wrap(a.animate(tgts, toAnimeOptions(props, o)), 'a'));
-  return createDeferred(loadMotion, (m) => wrap(m.animate(tgts, props, o), 'm'));
+  return startMotion();
 }
 
 export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: MorphSpringOptions): MorphControls {

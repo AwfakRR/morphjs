@@ -108,8 +108,7 @@ function runAnimation(
       ...shared, delay: typeof delay === 'function' ? delay(index, elements.length) : delay,
       onStart: startOnce, onCancel: cancelOnce,
     }));
-    // Motion keeps a finished tween at its end value unless it is paused before cancellation.
-    return groupControls(controls, onComplete, backend === motionAdapter ? control => control.pause() : undefined);
+    return groupControls(controls, onComplete, backend === motionAdapter ? control => control.seek?.(0) : undefined);
   };
 
   const pendingDelay = prepareStagger(opts.delay, animTargets);

@@ -26,35 +26,133 @@ export function getMotionSync(): typeof import('motion') {
   return motionModule;
 }
 
-export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
+export function wrapMotionControls(
+  motionAnimation: any,
+  finished?: PromiseLike<void>,
+  onCancel?: () => void,
+): MorphControls {
+  const tracks = motionAnimation.animations ?? [motionAnimation];
+  const legacyEnds = !('state' in motionAnimation) ? new WeakMap<object, number>() : undefined;
+  if (legacyEnds) {
+    for (const track of tracks) {
+      if (typeof track.attachTimeline !== 'function' || !('resolved' in track) || !track.options?.motionValue) continue;
+      const { onComplete, motionValue } = track.options;
+      track.options.onComplete = () => {
+        const resolved = track.resolved;
+        if (resolved?.animation) {
+          // Motion 11 always commits the forward keyframe, then cancels and loses the native playhead.
+          legacyEnds.set(track, track.time);
+          if (track.speed < 0) motionValue.set(resolved.keyframes[0]);
+        }
+        onComplete?.();
+      };
+    }
+  }
+  const pendingTimes = new WeakMap<object, { time: number }>();
+  const driverOf = (track: any) => track.animation ?? track;
+  const isJs = (driver: any) => typeof driver.tick === 'function';
+  const delayOf = (driver: any) =>
+    isJs(driver) ? (driver.options?.delay ?? 0) / 1000 : 0;
+  const signedDelay = (track: any, delay: number) => track.speed < 0 ? -delay : delay;
+  const readTime = (track: any, driver = driverOf(track), delay = delayOf(driver)) => {
+    if (delay && track.state === 'paused' && driver.holdTime != null) {
+      return Math.max(0, driver.holdTime / 1000 - signedDelay(track, delay));
+    }
+    return pendingTimes.get(track)?.time ?? track.time ?? 0;
+  };
+  const writeTime = (track: any, time: number, delay = delayOf(driverOf(track))) => {
+    // Motion's JS driver reads sampled time but writes time before its direction-dependent delay.
+    track.time = time + signedDelay(track, delay);
+    if (delay && motionModule) {
+      const pending = { time };
+      pendingTimes.set(track, pending);
+      const { frame } = motionModule;
+      frame.update(() => frame.postRender(() => {
+        if (pendingTimes.get(track) === pending) pendingTimes.delete(track);
+      }));
+    }
+  };
+  const play = (backward = false) => {
+    const resuming = !backward && tracks.some((track: any) => track.state === 'paused');
+    for (const track of tracks) {
+      const { speed, state } = track;
+      const driver = driverOf(track);
+      if (resuming && state === 'finished' && isJs(driver)) continue;
+      const delay = delayOf(driver);
+      // A JS track can finish on a frame past its endpoint. Reversing above it renders the delay frame.
+      const end = backward && state === 'finished' && speed >= 0 && isJs(driver)
+        ? driver.totalDuration ?? driver.resolved?.totalDuration
+        : undefined;
+      const time = end == null ? legacyEnds?.get(track) ?? readTime(track, driver, delay) : end / 1000;
+      legacyEnds?.delete(track);
+      if (backward) track.speed = -Math.abs(speed || 1);
+      const running = state === 'running';
+      if (!backward || !running) track.play();
+      // Motion's JS driver resumes a paused animation as though its speed were forward.
+      if ((!running && (backward || speed < 0)) || (running && delay && backward && speed >= 0)) {
+        writeTime(track, state === 'finished' && speed >= 0 && time === 0 ? track.duration : time, delay);
+      }
+    }
+  };
+
   const controls: MorphControls = {
-    play: () => motionAnimation.play(),
-    pause: () => motionAnimation.pause(),
+    play: () => play(),
+    pause: () => {
+      for (const track of tracks) {
+        const driver = driverOf(track);
+        if (isJs(driver) && (driver.state === 'paused' || driver.state === 'finished')) continue;
+        // Motion 11 pauses on sampled time. Keep the raw clock, including any remaining delay.
+        const rawTime = delayOf(driver) && !driver.updateTime && driver.state === 'running' &&
+          driver.driver && driver.startTime != null
+          ? driver.holdTime ?? Math.round(driver.driver.now() - driver.startTime) * track.speed
+          : undefined;
+        track.pause();
+        if (rawTime !== undefined) track.time = rawTime / 1000;
+      }
+    },
     cancel: () => {
-      motionAnimation.cancel();
+      for (const track of tracks) {
+        pendingTimes.delete(track);
+        legacyEnds?.delete(track);
+        const driver = driverOf(track);
+        if (track.speed < 0 && isJs(driver)) {
+          // Rewound tracks are already settled. Cancel would sample a different keyframe.
+          if (driver.state === 'finished') {
+            driver.options?.onCancel?.();
+            continue;
+          }
+          track.speed *= -1;
+        }
+        track.cancel();
+      }
       notifyControlsCanceled(controls);
+      if (tracks.length) onCancel?.();
     },
     finish: () => motionAnimation.finish(),
-    reverse: () => motionAnimation.reverse(),
+    reverse: () => play(true),
     seek: (time: number) => {
-      if (typeof motionAnimation.seek === 'function') motionAnimation.seek(time);
-      else if ('currentTime' in motionAnimation) motionAnimation.currentTime = time;
-      else if ('time' in motionAnimation) motionAnimation.time = time;
+      for (const track of tracks) {
+        legacyEnds?.delete(track);
+        const driver = driverOf(track);
+        // Motion 11 needs an explicit hold to resume a seek from a finished JS track.
+        if (driver.state === 'finished' && isJs(driver) && !driver.updateTime) track.pause();
+        writeTime(track, time, delayOf(driver));
+      }
     },
     get duration() {
       return motionAnimation.duration;
     },
     get progress() {
-      return motionAnimation.progress ?? 0;
+      return motionAnimation.duration ? Math.max(0, Math.min(1, this.currentTime / motionAnimation.duration)) : 0;
     },
     get currentTime() {
-      return motionAnimation.currentTime ?? 0;
+      return tracks.length ? readTime(tracks[0]) : 0;
     },
     get finished() {
       return Promise.resolve(finished ?? motionAnimation.finished);
     },
     get playState() {
-      return motionAnimation.playState;
+      return tracks.length ? motionAnimation.state ?? 'running' : 'idle';
     },
     commitStyles: () => {
       if (typeof motionAnimation.commitStyles === 'function') {
@@ -65,6 +163,11 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       return Promise.resolve(finished ?? motionAnimation.finished).then(onfulfilled, onrejected);
     },
     restart: () => {
+      for (const track of tracks) {
+        pendingTimes.delete(track);
+        legacyEnds?.delete(track);
+        if (track.speed < 0) track.speed *= -1;
+      }
       motionAnimation.cancel();
       motionAnimation.play();
     }
@@ -92,16 +195,17 @@ export const motionAdapter: IAnimationAdapter = {
           ease: options.ease !== undefined ? toMotionEasing(options.ease) : undefined,
           onUpdate: afterRender(motion, options.onUpdate),
           onComplete: instant ? undefined : options.onComplete,
+          onCancel: undefined,
         }
       : undefined;
     const animation = motion.animate(targets, keyframes, motionOptions as any);
-    if (!instant) return wrapMotionControls(animation);
+    if (!instant) return wrapMotionControls(animation, undefined, options?.onCancel);
 
     const finished = Promise.resolve(animation.finished).then(
       () => new Promise<void>(resolve => motion.frame.postRender(() => resolve()))
     );
     if (options.onComplete) finished.then(options.onComplete);
-    return wrapMotionControls(animation, finished);
+    return wrapMotionControls(animation, finished, options.onCancel);
   },
 
   spring: (targets: any, keyframes: any, springOptions: MorphSpringOptions, options?: MorphAnimationOptions) => {
