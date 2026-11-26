@@ -222,6 +222,10 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
 
   const tlo: MorphTimeline = {
     ...deferred,
+    get finished() {
+      return pending ? state.ready().then(() => deferred.finished) : deferred.finished;
+    },
+    then: (resolve, reject) => tlo.finished.then(resolve, reject),
     add(t: MorphTargets | MorphTimeline, p?: Record<string, any> | Position, o?: Position) {
       if (typeof p !== 'object') {
         const child = timelines.get(t as MorphTimeline);

@@ -423,6 +423,25 @@ it('resolves an initialized Anime child’s finished promise when its parent rea
   }
 });
 
+it.each(['anime', 'gsap'] as const)('reports the new final frame after adding a child to a completed %s parent', async (engine) => {
+  const parent = timeline({ engine, autoplay: false }).add({ x: 0 }, { x: 100, duration: 1 });
+  try {
+    parent.finish();
+    await parent.finished;
+    const target = { x: 0 };
+    const child = timeline({ engine, autoplay: false }).add(target, { x: 100, duration: 1 });
+    parent.add(child);
+    const finalFrame = () => ({ time: parent.currentTime, x: target.x });
+    const observed = parent.finished.then(finalFrame);
+    const observedThen = parent.then(finalFrame);
+    parent.finish();
+    expect(await observed).toEqual({ time: 2, x: 100 });
+    expect(await observedThen).toEqual({ time: 2, x: 100 });
+  } finally {
+    parent.cancel();
+  }
+});
+
 it('samples overlapping Anime children at the GSAP parent time in both directions', async () => {
   const long = { x: 0 };
   const short = { x: 0 };
