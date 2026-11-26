@@ -33,6 +33,25 @@ afterEach(() => {
 });
 
 describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion path', (_, svg) => {
+  it('moves all markers in a mix of NodeLists and element arrays', async () => {
+    browser();
+    const markers = [new Marker(), new Marker(), new Marker()];
+    class MarkerList {
+      forEach(callback: (marker: Marker) => void) { markers.slice(0, 2).forEach(callback); }
+      [Symbol.iterator]() { return markers.slice(0, 2)[Symbol.iterator](); }
+    }
+    vi.stubGlobal('NodeList', MarkerList);
+    const list = new MarkerList() as unknown as NodeList;
+    const group = [markers[2]] as unknown as HTMLElement[];
+
+    const controls = svg.motionPath([list, group], geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.finish();
+    await controls.finished;
+    expect(markers.map(marker => marker.style.transform)).toEqual(Array(3).fill('translate(40px,60px)'));
+  });
+
   it('seeks by seconds along the selected segment and rotates to the sampled tangent', async () => {
     const path = geometry();
     const { marker, target, querySelector } = browser(path);

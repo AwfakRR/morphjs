@@ -83,7 +83,9 @@ function runAnimation(
     svg: useSvg,
   });
 
-  const elements = resolveTargets(targets);
+  const elements = createProgressTarget && Array.isArray(targets)
+    ? [...new Set(targets.flat(Infinity).flatMap(resolveTargets))]
+    : resolveTargets(targets);
   if (createProgressTarget && !elements.length) return createNoopControls();
   const animTargets = elements.length > 0 ? elements : targets;
 

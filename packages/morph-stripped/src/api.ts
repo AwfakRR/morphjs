@@ -470,7 +470,9 @@ export const svg = {
       if (!a) return mkd();
       let elements: Element[];
       try {
-        elements = a.utils.$(targets);
+        const groups = Array.isArray(targets) ? targets.flat(Infinity) : [targets];
+        elements = a.utils.$(groups.flatMap(target =>
+          typeof NodeList !== 'undefined' && target instanceof NodeList ? Array.from(target) : [target]));
       } catch {
         return mkd();
       }
