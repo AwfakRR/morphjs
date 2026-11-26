@@ -64,7 +64,10 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       }
     },
     reverse: () => animeAnimation.reverse(),
-    restart: () => animeAnimation.restart(),
+    restart: () => {
+      if (animeAnimation.completed) finished = undefined;
+      animeAnimation.restart();
+    },
     seek: (time: number) => {
       if (typeof animeAnimation.seek === 'function') {
         animeAnimation.seek(time * 1000);
@@ -253,6 +256,9 @@ export const animeAdapter: IAnimationAdapter = {
       finish: syncPlayhead(controls.finish),
       restart: syncPlayhead(controls.restart, true),
       reverse: syncPlayhead(controls.reverse),
+      get finished() {
+        return controls.finished;
+      },
       get duration() {
         return (tl.duration || 0) / 1000;
       },

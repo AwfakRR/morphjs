@@ -1,10 +1,11 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { animeAdapter, createScope, morph, motionAdapter, stateManager, type MorphTargets } from '../src/index';
+import { animeAdapter, createScope, gsapAdapter, morph, motionAdapter, stateManager, type MorphTargets } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 import { createDeferredControls } from '../src/utils/deferred-controls';
 
 beforeAll(async () => {
   vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
+  await gsapAdapter.ensure!();
   vi.stubGlobal('window', {});
   vi.stubGlobal('document', new EventTarget());
   vi.stubGlobal('Element', class {});
@@ -185,4 +186,36 @@ it('cancels a Motion tween only once when its scroll link belongs to the same sc
 
   scope.revert();
   expect(onCancel).toHaveBeenCalledOnce();
+});
+
+it.each(['anime', 'gsap'])('tracks a completed %s timeline again when it is restarted and re-added', async engine => {
+  const scope = createScope();
+  const timeline = scope.timeline({ engine, defaults: { duration: 0.4 } })
+    .add({ value: 0 } as unknown as MorphTargets, { value: 100 });
+  const cancel = vi.spyOn(timeline, 'cancel');
+
+  try {
+    timeline.finish();
+    await vi.advanceTimersByTimeAsync(16);
+    expect(timeline.playState).toBe('finished');
+    expect(scope.size).toBe(0);
+    const previous = timeline.finished;
+
+    timeline.restart();
+    expect(timeline.finished).not.toBe(previous);
+    scope.add(timeline);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(timeline.playState).toBe('running');
+    expect(scope.size).toBe(1);
+    timeline.finish();
+    await vi.advanceTimersByTimeAsync(16);
+    expect(scope.size).toBe(0);
+
+    timeline.restart();
+    scope.add(timeline);
+    scope.revert();
+    expect(cancel).toHaveBeenCalledOnce();
+  } finally {
+    timeline.cancel();
+  }
 });

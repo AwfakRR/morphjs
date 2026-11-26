@@ -23,7 +23,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
   let finishedResolve: () => void;
   let finishedReject: (reason: any) => void;
-  const finished = new Promise<void>((res, rej) => {
+  let finished = new Promise<void>((res, rej) => {
     finishedResolve = res;
     finishedReject = rej;
   });
@@ -164,8 +164,13 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
     restart() {
       const rt = buildRealTimeline();
-      if (rt) rt.restart();
-      else pendingActions.push((t) => t.restart());
+      const restart = (timeline: MorphTimeline) => {
+        const completed = timeline.playState === 'finished';
+        timeline.restart();
+        if (completed) finished = timeline.finished;
+      };
+      if (rt) restart(rt);
+      else pendingActions.push(restart);
     },
 
     seek(time: number) {
@@ -199,7 +204,9 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
       return realTimeline ? realTimeline.duration : 0;
     },
 
-    finished,
+    get finished() {
+      return finished;
+    },
 
     then(onFulfilled, onRejected) {
       return finished.then(onFulfilled, onRejected);
