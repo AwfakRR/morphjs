@@ -106,6 +106,8 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       for (const track of tracks) {
         pendingTimes.delete(track);
         legacyEnds?.delete(track);
+        // Motion's JS cancel samples time zero with the current direction's delay.
+        if (track.speed < 0 && isJs(driverOf(track))) track.speed *= -1;
       }
       motionAnimation.cancel();
       notifyControlsCanceled(controls);

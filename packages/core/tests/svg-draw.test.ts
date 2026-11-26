@@ -181,6 +181,24 @@ it('uses each path length in the Motion fallback when Anime is unavailable', asy
   expect(offsets()).toEqual([0, 0]);
 });
 
+it('resets both Motion strokes when canceled during staggered reverse playback', async () => {
+  const { targets, offsets } = await motionPaths();
+  const onComplete = vi.fn();
+  const controls = svg.draw(targets, {
+    engine: 'motion', duration: 0.5, ease: 'linear', delay: index => index * 0.14, onComplete,
+  });
+  await vi.advanceTimersByTimeAsync(400);
+  controls.reverse();
+  await vi.advanceTimersByTimeAsync(320);
+  expect(offsets()[0]).toBeLessThan(100);
+  expect(offsets()[1]).toBe(240);
+
+  controls.cancel();
+  await vi.advanceTimersByTimeAsync(64);
+  expect(offsets()).toEqual([100, 240]);
+  expect(onComplete).not.toHaveBeenCalled();
+});
+
 it('commits each final Motion erase offset before reduced-motion completion', async () => {
   const { targets, offsets } = await motionPaths();
   configure({ reducedMotion: 'always' });

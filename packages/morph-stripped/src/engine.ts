@@ -109,6 +109,8 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
       for (const track of tracks) {
         pendingTimes?.delete(track);
         legacyEnds?.delete(track);
+        // Motion's JS cancel samples time zero with the current direction's delay.
+        if (track.speed < 0 && isJs(driverOf(track))) track.speed *= -1;
       }
       anim.cancel?.();
     },
