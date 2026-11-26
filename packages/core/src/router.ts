@@ -22,6 +22,7 @@ function detectRequiredCapability(options: any): AdapterCapability {
   if (options?.gesture) return 'gesture';
   if (options?.timeline) return 'timeline';
   if (options?.svg) return 'svg';
+  if (options?.layout) return 'layout';
   if (options?.stagger && (options.stagger.grid || options.stagger.jitter !== undefined)) return 'stagger';
   return 'tween';
 }
@@ -42,6 +43,7 @@ export function resolveAdapter(options?: {
   gesture?: boolean;
   timeline?: boolean;
   svg?: boolean;
+  layout?: boolean;
   stagger?: MorphStaggerOptions;
 }): IAnimationAdapter {
   const chosen = options?.engine || options?.adapter;

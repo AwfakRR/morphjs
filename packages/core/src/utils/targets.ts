@@ -24,7 +24,7 @@ export function resolveTargets(targets: MorphTargets): Element[] {
       }
     } else if (isValidTarget(t)) {
       resolved.add(t);
-    } else if (t instanceof NodeList || Array.isArray(t)) {
+    } else if ((typeof NodeList !== 'undefined' && t instanceof NodeList) || Array.isArray(t)) {
       (t as any).forEach((item: any) => {
         if (isValidTarget(item)) {
           resolved.add(item);
