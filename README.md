@@ -40,7 +40,7 @@ MorphJS comes in two editions tailored to your architecture:
 
 1. **`morph-stripped`** (*Recommended*)  
    The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
-   - **Size:** `~25 KB raw` / `~8 KB gzip` (ESM)
+   - **Size:** `~26 KB raw` / `~8 KB gzip` (ESM)
 2. **`morphjs`** (Core)  
    The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
    - **Size:** `~35 KB raw` / `~9 KB gzip`

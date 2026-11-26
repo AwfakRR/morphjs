@@ -65,7 +65,7 @@ morphjs/
 ### Editions: `morphjs` vs `morph-stripped`
 1. **`morph-stripped`** (`packages/morph-stripped`):
    - Direct lightweight loaders.
-   - Omits event buses, state manager registries, and adapter registries to minimize bundle footprint (~25 KB raw / ~8 KB gzip).
+   - Omits event buses, state manager registries, and adapter registries to minimize bundle footprint (~26 KB raw / ~8 KB gzip).
 2. **`morphjs`** (`packages/core`):
    - Full extensible architecture with dynamic adapter registration, `animationEvents` bus, and centralized `stateManager` tracking active tweens for global pause/resume/cleanup.
 
