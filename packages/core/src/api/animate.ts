@@ -130,42 +130,24 @@ function runAnimation(
     }
   }
 
-  const controls: MorphControls = {
-    play: () => animControls.play(),
-    pause: () => animControls.pause(),
-    reverse: () => animControls.reverse(),
-    cancel: () => {
-      animControls.cancel();
-      stateManager.unregister(id);
-    },
-    finish: () => animControls.finish(),
-    restart: () => animControls.restart(),
-    seek: animControls.seek?.bind(animControls),
-    commitStyles: () => animControls.commitStyles(),
-    get progress() { return animControls.progress; },
-    get currentTime() { return animControls.currentTime; },
-    get playState() { return animControls.playState; },
-    get finished() { return animControls.finished; },
-    then: (onFulfilled, onRejected) => animControls.then(onFulfilled, onRejected),
-  };
-  const id = stateManager.register(controls, targets);
+  const id = stateManager.register(animControls, targets);
 
   animationEvents.emit('start', {
     type: 'start',
     target: targets,
-    controls,
+    controls: animControls,
     timestamp: Date.now(),
   });
 
-  controls.finished.then(() => {
+  animControls.finished.then(() => {
     animationEvents.emit('complete', {
       type: 'complete',
       target: targets,
-      controls,
+      controls: animControls,
       timestamp: Date.now(),
     });
     stateManager.unregister(id);
   }, () => stateManager.unregister(id));
 
-  return controls;
+  return animControls;
 }

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { animate, animationEvents, configure, spring, stateManager } from '../src/index';
+import { animate, animationEvents, configure, spring, stagger, stateManager } from '../src/index';
+import { ensureAnime } from '../src/adapters/anime-adapter';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 
 describe('Motion springs', () => {
@@ -102,6 +103,26 @@ describe('Motion springs', () => {
       expect(onComplete).not.toHaveBeenCalled();
     } finally {
       animationEvents.off('complete', onComplete);
+      stateManager.cancelFor(proxy as any);
+    }
+  });
+
+  it('unregisters a spring canceled while its advanced stagger is loading', async () => {
+    await ensureAnime();
+    const proxy = { val: 0 };
+    const controls = spring(proxy as any, { val: 100 }, undefined, {
+      delay: stagger(0.1, { grid: [1, 1] }),
+    });
+
+    try {
+      expect(stateManager.getRunning()).toContainEqual(expect.objectContaining({ controls, targets: proxy }));
+      controls.cancel();
+
+      const stillTracked = stateManager.getRunning().some(entry => entry.controls === controls);
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(stillTracked).toBe(false);
+      expect(proxy.val).toBe(0);
+    } finally {
       stateManager.cancelFor(proxy as any);
     }
   });

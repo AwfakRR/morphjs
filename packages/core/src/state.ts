@@ -1,14 +1,21 @@
 import type { MorphControls, MorphTargets } from './types';
+import { onControlsCancel } from './utils/controls';
 import { resolveTargets } from './utils/targets';
 
 export class StateManager {
-  private animations: Map<string, { controls: MorphControls; targets: MorphTargets; createdAt: number }> = new Map();
+  private animations: Map<string, {
+    controls: MorphControls;
+    targets: MorphTargets;
+    createdAt: number;
+    stopWatchingCancel: () => void;
+  }> = new Map();
   private idCounter: number = 0;
 
   /** Register an animation and get a unique ID */
   register(controls: MorphControls, targets: MorphTargets): string {
     const id = `anim_${++this.idCounter}`;
-    this.animations.set(id, { controls, targets, createdAt: Date.now() });
+    const stopWatchingCancel = onControlsCancel(controls, () => this.unregister(id));
+    this.animations.set(id, { controls, targets, createdAt: Date.now(), stopWatchingCancel });
 
     // Auto-unregister when finished
     controls.finished.then(() => {
@@ -22,6 +29,7 @@ export class StateManager {
   
   /** Unregister an animation by ID */
   unregister(id: string): void {
+    this.animations.get(id)?.stopWatchingCancel();
     this.animations.delete(id);
   }
   
@@ -46,8 +54,10 @@ export class StateManager {
   
   /** Cancel all animations */
   cancelAll(): void {
-    this.animations.forEach(({ controls }) => controls.cancel());
-    this.animations.clear();
+    this.animations.forEach(({ controls }, id) => {
+      controls.cancel();
+      this.unregister(id);
+    });
   }
   
   /** Cancel animations on specific targets */

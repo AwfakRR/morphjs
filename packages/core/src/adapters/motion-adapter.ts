@@ -1,5 +1,6 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
 import { toMotionEasing } from '../easing/easing';
+import { notifyControlsCanceled } from '../utils/controls';
 import { resolveTargets } from '../utils/targets';
 
 let motionModule: typeof import('motion') | null = null;
@@ -26,10 +27,13 @@ export function getMotionSync(): typeof import('motion') {
 }
 
 export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
-  return {
+  const controls: MorphControls = {
     play: () => motionAnimation.play(),
     pause: () => motionAnimation.pause(),
-    cancel: () => motionAnimation.cancel(),
+    cancel: () => {
+      motionAnimation.cancel();
+      notifyControlsCanceled(controls);
+    },
     finish: () => motionAnimation.finish(),
     reverse: () => motionAnimation.reverse(),
     seek: (time: number) => {
@@ -61,6 +65,7 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       motionAnimation.play();
     }
   };
+  return controls;
 }
 
 // Motion writes animated objects during the render phase, so callbacks that read them run after it.
@@ -113,18 +118,24 @@ export const motionAdapter: IAnimationAdapter = {
     let c2: any, cx = false;
     const fin = c1.finished.then(() => cx ? undefined : (c2 = wrapMotionControls(motion.animate(targets, s2, transition)), c2.finished));
 
-    return new Proxy({} as MorphControls, {
+    const controls = new Proxy({} as MorphControls, {
       get: (_, p) => {
         if (p === 'finished') return fin;
         if (p === 'then') return fin.then.bind(fin);
         if (p === 'progress') return c2 ? 0.5 + c2.progress * 0.5 : c1.progress * 0.5;
         if (p === 'currentTime' || p === 'playState') return (c2 || c1)[p];
-        if (p === 'cancel') return () => { cx = true; c1.cancel(); c2?.cancel(); };
+        if (p === 'cancel') return () => {
+          cx = true;
+          c1.cancel();
+          c2?.cancel();
+          notifyControlsCanceled(controls);
+        };
         if (p === 'restart') return () => { cx = false; c1.cancel(); c2?.cancel(); c1.play(); };
         if (p === 'commitStyles') return () => { c1.commitStyles(); c2?.commitStyles(); };
         return (...a: any[]) => (c2 || c1)[p]?.(...a);
       }
     });
+    return controls;
   },
 
   scroll(animationOrCallback: MorphControls | ((progress: number) => void), options?: MorphScrollOptions): MorphControls {
