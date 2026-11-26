@@ -30,8 +30,8 @@ function detectRequiredCapability(options: any): AdapterCapability {
  * Resolve which adapter to use based on the animation requirements.
  * Priority:
  * 1. Explicit adapter specified in options
- * 2. Capability-based routing (spring→motion, timeline→anime, etc.)
- * 3. Global default adapter
+ * 2. Global default adapter, when it supports the required capability
+ * 3. Capability-based routing (spring→motion, timeline→anime, etc.)
  * 4. First available adapter with 'tween' capability
  */
 export function resolveAdapter(options?: {
@@ -52,15 +52,15 @@ export function resolveAdapter(options?: {
   }
 
   const requiredCapability = detectRequiredCapability(options);
-  const capabilityAdapter = adapterRegistry.findByCapability(requiredCapability);
-  
-  if (capabilityAdapter) {
-    return capabilityAdapter;
-  }
 
   if (globalConfig.defaultAdapter) {
     const adapter = adapterRegistry.get(globalConfig.defaultAdapter);
-    if (adapter) return adapter;
+    if (adapter?.capabilities.includes(requiredCapability)) return adapter;
+  }
+
+  const capabilityAdapter = adapterRegistry.findByCapability(requiredCapability);
+  if (capabilityAdapter) {
+    return capabilityAdapter;
   }
 
   const defaultTweenAdapter = adapterRegistry.findByCapability('tween');
