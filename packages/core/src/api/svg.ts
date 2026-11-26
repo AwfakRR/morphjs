@@ -48,7 +48,7 @@ export const svg = {
 
     const isReverse = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
 
-    const [len] = elements.map(el => {
+    const lengths = elements.map(el => {
       if (typeof SVGGeometryElement === 'undefined' || !(el instanceof SVGGeometryElement)) return 500;
 
       const length = el.getTotalLength ? el.getTotalLength() : 500;
@@ -57,10 +57,11 @@ export const svg = {
       return length;
     });
 
-    const from = isReverse ? 0 : len;
-    const to = isReverse ? len : 0;
-
-    return animateSvg(elements, { strokeDashoffset: [from, to] }, options);
+    // Anime passes (target, index); the GSAP dash-offset fallback passes (index, target).
+    const length = lengths.every(len => len === lengths[0])
+      ? lengths[0]
+      : (targetOrIndex: Element | number, index: number) => lengths[typeof targetOrIndex === 'number' ? targetOrIndex : index];
+    return animateSvg(elements, { strokeDashoffset: isReverse ? [0, length] : [length, 0] }, options);
   },
 
   /**

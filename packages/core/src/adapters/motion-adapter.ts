@@ -1,4 +1,5 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
+import type { AnimationSequence } from 'motion';
 import { toMotionEasing } from '../easing/easing';
 import { notifyControlsCanceled } from '../utils/controls';
 import { resolveTargets } from '../utils/targets';
@@ -90,7 +91,20 @@ export const motionAdapter: IAnimationAdapter = {
           onComplete: instant ? undefined : options.onComplete,
         }
       : undefined;
-    const animation = motion.animate(targets, keyframes, motionOptions as any);
+    const dashoffset = keyframes.strokeDashoffset;
+    let animation;
+    if (Array.isArray(targets) && Array.isArray(dashoffset) && dashoffset.some(value => typeof value === 'function')) {
+      // Motion uses one keyframe set per segment; start all paths together in one sequence.
+      const { duration, delay, ease, ...sequenceOptions } = motionOptions ?? {};
+      const sequence: AnimationSequence = targets.map((target, index) => [
+        target,
+        { ...keyframes, strokeDashoffset: dashoffset.map(value => typeof value === 'function' ? value(target, index) : value) },
+        { at: 0, duration, ease, delay: typeof delay === 'function' ? delay(index, targets.length) : delay },
+      ]);
+      animation = motion.animate(sequence, sequenceOptions);
+    } else {
+      animation = motion.animate(targets, keyframes, motionOptions as any);
+    }
     if (!instant) return wrapMotionControls(animation);
 
     const finished = Promise.resolve(animation.finished).then(
