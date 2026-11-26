@@ -1,6 +1,14 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { morph } from 'morphjs';
-import type { MorphSpringOptions } from 'morphjs';
+import type { MorphControls, MorphSpringOptions } from 'morphjs';
+
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+interface SpringAnimation {
+  proxy: { val: number };
+  target?: number;
+  controls?: MorphControls;
+}
 
 /**
  * useMorphSpring allows animating a numeric value using a spring physics simulation.
@@ -10,30 +18,41 @@ import type { MorphSpringOptions } from 'morphjs';
  */
 export function useMorphSpring(initialValue: number, springOptions?: MorphSpringOptions) {
   const [currentValue, setCurrentValue] = useState(initialValue);
-  const targetRef = useRef(initialValue);
-  const proxyRef = useRef({ val: initialValue });
+  const springRef = useRef<SpringAnimation>({ proxy: { val: initialValue }, target: initialValue });
+  const mountedRef = useRef(true);
 
-  useEffect(() => {
-    // Keep proxy in sync if currentValue somehow changes externally
-    proxyRef.current.val = currentValue;
-  }, [currentValue]);
+  useIsomorphicLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const previous = springRef.current;
+      springRef.current = { proxy: { val: previous.proxy.val } };
+      previous.controls?.cancel();
+    };
+  }, []);
 
   const setTarget = useCallback(
     (nextValue: number) => {
-      if (typeof window === 'undefined') return;
-      if (targetRef.current === nextValue) return;
-      targetRef.current = nextValue;
+      if (typeof window === 'undefined' || !mountedRef.current) return;
+      const previous = springRef.current;
+      if (previous.target === nextValue) return;
 
-      morph.animate(
-        proxyRef.current as any,
+      const proxy = { val: previous.proxy.val };
+      const animation: SpringAnimation = { proxy, target: nextValue };
+      springRef.current = animation;
+      previous.controls?.cancel();
+
+      animation.controls = morph.animate(
+        proxy as any,
         { val: nextValue },
         {
           spring: springOptions ?? true,
           onUpdate: () => {
-            setCurrentValue(proxyRef.current.val);
+            if (springRef.current === animation) setCurrentValue(proxy.val);
           }
         }
       );
+      if (springRef.current !== animation) animation.controls.cancel();
     },
     [springOptions]
   );
