@@ -131,8 +131,20 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
   const c: any[] = [], els = typeof t === 'string' ? Array.from(document.querySelectorAll(t)) : Array.isArray(t) || t instanceof NodeList ? Array.from(t as any) : [t];
   if (o?.hover || o?.press) {
     loadMotion().then((m: any) => {
-      if (o.hover && m.hover) { const hc = m.hover(t, { onHoverStart: o.onHoverStart, onHoverEnd: o.onHoverEnd }); if (typeof hc === 'function') c.push(hc); }
-      if (o.press && m.press) { const pc = m.press(t, { onPressStart: o.onPressStart, onPressEnd: o.onPressEnd }); if (typeof pc === 'function') c.push(pc); }
+      if (o.hover && m.hover) {
+        const hc = m.hover(t, (_: Element, event: PointerEvent) => {
+          o.onHoverStart?.(event);
+          return o.onHoverEnd;
+        });
+        if (typeof hc === 'function') c.push(hc);
+      }
+      if (o.press && m.press) {
+        const pc = m.press(t, (_: Element, event: PointerEvent) => {
+          o.onPressStart?.(event);
+          return (endEvent: PointerEvent) => o.onPressEnd?.(endEvent);
+        });
+        if (typeof pc === 'function') c.push(pc);
+      }
     });
   }
   if (o?.drag) {
@@ -141,7 +153,7 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
       let a = false, ox = 0, oy = 0, px = 0, py = 0;
       const cb = (y: string, e: any, dx=0, dy=0, tx=0, ty=0) => (o as any)[y]?.(e, { point: {x: e.clientX, y: e.clientY}, delta: {x: dx, y: dy}, offset: {x: tx, y: ty}, velocity: {x: dx, y: dy} });
       const d = (e: any) => { a = true; ox=px=e.clientX; oy=py=e.clientY; el.setPointerCapture?.(e.pointerId); cb('onDragStart', e); };
-      const m = (e: any) => { if(!a)return; const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY; const tx=e.clientX-ox, ty=e.clientY-oy; el.style.transform=`translate(${tx}px, ${ty}px)`; cb('onDrag', e, dx, dy, tx, ty); };
+      const m = (e: any) => { if(!a)return; const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY; const tx=e.clientX-ox, ty=e.clientY-oy; el.style.translate=`${tx}px ${ty}px`; cb('onDrag', e, dx, dy, tx, ty); };
       const u = (e: any) => { if(!a)return; a = false; el.releasePointerCapture?.(e.pointerId); cb('onDragEnd', e, 0, 0, px-ox, py-oy); };
       ['down','move','up','cancel'].forEach(e => el.addEventListener(`pointer${e}`, e==='down'?d:e==='move'?m:u));
       c.push(() => ['down','move','up','cancel'].forEach(e => el.removeEventListener(`pointer${e}`, e==='down'?d:e==='move'?m:u)));

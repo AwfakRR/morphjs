@@ -143,8 +143,8 @@ gesture('#gesture-card', {
   onPressEnd: () => {
     morph('#gesture-card', { scale: 1 }, 0.1);
   },
-  onDragEnd: () => {
-    spring('#gesture-card', { x: 0, y: 0 }, { stiffness: 300, damping: 20 });
+  onDragEnd: (_, { offset: { x, y } }) => {
+    if (x || y) spring('#gesture-card', { translate: [`${x}px ${y}px`, '0px 0px'] }, { stiffness: 300, damping: 20 });
   },
 });
 
