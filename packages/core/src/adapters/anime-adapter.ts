@@ -12,7 +12,7 @@ import type {
 } from '../types';
 import { toAnimeEasing } from '../easing/easing';
 import { notifyControlsCanceled } from '../utils/controls';
-import { animeTimelineStagger } from '../api/stagger';
+import { getAnimeTimelineStaggerFactory } from '../api/stagger';
 
 /** Cached Anime.js v4 module */
 let animeModule: Record<string, any> | null = null;
@@ -161,9 +161,13 @@ export const animeAdapter: IAnimationAdapter = {
     const anime = getAnimeSync();
 
     const { duration, delay, ease } = options?.defaults ?? {};
-    const staggerDelay = animeTimelineStagger(delay);
-    const defaults = toAnimeOptions({}, { duration, delay: staggerDelay ? undefined : delay, ease });
-    if (staggerDelay) defaults.delay = staggerDelay;
+    const createStaggerDelay = getAnimeTimelineStaggerFactory(delay);
+    const defaults = toAnimeOptions({}, { duration, delay: createStaggerDelay ? undefined : delay, ease });
+    const segmentOptions = (properties: TimelineSegment['properties'], options?: MorphAnimationOptions) => {
+      const params = toAnimeOptions(properties, options, true);
+      if (createStaggerDelay && params.delay === undefined) params.delay = createStaggerDelay();
+      return params;
+    };
 
     const pauses: Array<{ position: number; callback?: () => void }> = [];
     // Compare checkpoints at the same precision as Anime's playhead getters.
@@ -221,7 +225,7 @@ export const animeAdapter: IAnimationAdapter = {
 
     // Add segments
     for (const seg of segments) {
-      const segOpts = toAnimeOptions(seg.properties, seg.options, true);
+      const segOpts = segmentOptions(seg.properties, seg.options);
       tl.add(seg.targets, segOpts, toAnimePosition(seg.offset));
     }
 
@@ -255,7 +259,7 @@ export const animeAdapter: IAnimationAdapter = {
         return controls.playState;
       },
       add(addTargets, addProps, offset?) {
-        const addOpts = toAnimeOptions(addProps, undefined, true);
+        const addOpts = segmentOptions(addProps);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
         previousPosition = roundPosition(tl.iterationCurrentTime);
         return this;

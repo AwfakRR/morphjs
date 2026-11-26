@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import type { MorphTargets } from '../src/types';
 import { animeAdapter, ensureAnime } from '../src/adapters/anime-adapter';
-import { animeTimelineStagger } from '../src/api/stagger';
+import { getAnimeTimelineStaggerFactory } from '../src/api/stagger';
 import { stagger, timeline } from '../src/index';
 
 it('positions Anime timeline segments in seconds before and after initialization', async () => {
@@ -47,7 +47,8 @@ it('passes numeric target counts through to older Anime grid staggers', () => {
   const compute = vi.fn((_target: unknown, index: number, total: number) => index * 100 + total);
   const nativeStagger = vi.spyOn(animeAdapter, 'stagger').mockReturnValue(compute);
   try {
-    const delay = animeTimelineStagger(stagger(0.1, { grid: [2, 2] }));
+    const createDelay = getAnimeTimelineStaggerFactory(stagger(0.1, { grid: [2, 2] }));
+    const delay = createDelay?.();
     const target = { x: 0 };
     expect(delay?.(target, 1, 4)).toBe(104);
     expect(delay?.(target, 2, 4)).toBe(204);
@@ -55,6 +56,34 @@ it('passes numeric target counts through to older Anime grid staggers', () => {
     expect(nativeStagger).toHaveBeenCalledOnce();
   } finally {
     nativeStagger.mockRestore();
+  }
+});
+
+it('shuffles equal-size Anime grid segments independently and respects explicit delays', async () => {
+  await ensureAnime();
+  const first = Array.from({ length: 4 }, () => ({ x: 0 }));
+  const second = Array.from({ length: 4 }, () => ({ x: 0 }));
+  const override = { x: 0 };
+  const random = vi.spyOn(Math, 'random');
+  for (let index = 0; index < 4; index++) random.mockReturnValueOnce(0);
+  random.mockReturnValue(0.9999);
+
+  try {
+    const tl = timeline({
+      autoplay: false,
+      defaults: { duration: 0.5, delay: stagger(0.1, { grid: [2, 2], from: 'random' }), ease: 'linear' },
+    }).add(first as unknown as MorphTargets, { x: 100 }, 0);
+    expect(tl.duration).toBeCloseTo(0.641, 5);
+
+    tl.add(second as unknown as MorphTargets, { x: 100 }, 0);
+    tl.add(override, { x: 100, delay: 0 }, 0);
+    tl.seek?.(0.11);
+    expect(first.map(target => target.x)).toEqual([2, 2, 0, 22]);
+    expect(second.map(target => target.x)).toEqual([22, 2, 2, 0]);
+    expect(override.x).toBe(22);
+    expect(random).toHaveBeenCalledTimes(8);
+  } finally {
+    random.mockRestore();
   }
 });
 
