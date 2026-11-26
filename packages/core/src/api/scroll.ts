@@ -4,7 +4,7 @@ import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
-import { createNoopControls, notifyControlsCanceled } from '../utils/controls';
+import { createNoopControls, notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 import { inView } from './in-view';
 
 const scrollTrackingControls = new WeakSet<MorphControls>();
@@ -88,7 +88,11 @@ function trackScroll(
       controls = fallback();
     } else {
       const deferred = createDeferredControls();
+      let canceled = false;
+      const unsubscribe = onControlsCancel(deferred.controls, () => { canceled = true; });
       void ensure().then(() => {
+        unsubscribe();
+        if (canceled) return;
         if (!adapter.scroll) return deferred.resolve(fallback());
         let result: MorphControls;
         try {
@@ -97,7 +101,10 @@ function trackScroll(
           result = fallback();
         }
         deferred.resolve(result);
-      }, () => deferred.resolve(fallback())).catch(deferred.reject);
+      }, () => {
+        unsubscribe();
+        if (!canceled) deferred.resolve(fallback());
+      }).catch(deferred.reject);
       controls = deferred.controls;
     }
   }
