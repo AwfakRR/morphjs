@@ -1,5 +1,5 @@
-import { ref, type Ref } from 'vue';
-import { animate, type MorphSpringOptions } from 'morphjs';
+import { getCurrentScope, onScopeDispose, ref, type Ref } from 'vue';
+import { animate, type MorphControls, type MorphSpringOptions } from 'morphjs';
 
 export interface UseMorphSpringReturn {
   value: Ref<number>;
@@ -16,24 +16,37 @@ export function useMorphSpring(
   springOptions?: MorphSpringOptions
 ): UseMorphSpringReturn {
   const value = ref(initialValue);
-  let currentAnim: any = null;
-  const proxy = { val: initialValue };
+  let currentAnim: { controls?: MorphControls } | undefined;
+  let disposed = false;
+
+  if (getCurrentScope()) {
+    onScopeDispose(() => {
+      disposed = true;
+      const previous = currentAnim;
+      currentAnim = undefined;
+      previous?.controls?.cancel();
+    });
+  }
 
   const set = (next: number) => {
-    if (currentAnim && typeof currentAnim.cancel === 'function') {
-      currentAnim.cancel();
-    }
-    proxy.val = value.value;
-    currentAnim = animate(
+    if (disposed) return;
+    const previous = currentAnim;
+    const animation: { controls?: MorphControls } = {};
+    currentAnim = animation;
+    previous?.controls?.cancel();
+
+    const proxy = { val: value.value };
+    animation.controls = animate(
       proxy as any,
       { val: next },
       {
         spring: springOptions ?? true,
         onUpdate: () => {
-          value.value = proxy.val;
+          if (currentAnim === animation) value.value = proxy.val;
         }
       }
     );
+    if (currentAnim !== animation) animation.controls.cancel();
   };
 
   return {
