@@ -13,7 +13,7 @@ import type {
 import { getConfig, resolveAdapter, shouldReduceMotion } from '../router';
 import { adapterRegistry } from '../adapters/adapter';
 import { resolveTargets } from '../utils/targets';
-import { createNoopControls, groupControls, onControlsCancel } from '../utils/controls';
+import { createNoopControls, groupControls, notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 import { createDeferredControls } from '../utils/deferred-controls';
 import { motionAdapter } from '../adapters/motion-adapter';
 import { stateManager } from '../state';
@@ -269,7 +269,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
     }
   };
 
-  let supersededAll = false;
+  let anySuperseded = false;
 
   const startEntries = (
     backend: IAnimationAdapter,
@@ -281,10 +281,11 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
     }
     if (backend.layout) {
       const ctrl = backend.layout(activeEntries, resolvedOpts);
-      const baseFinished = ctrl.finished;
       let resolveSuperseded: (() => void) | undefined;
       const superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+      let completed = false;
       const cleanup = () => {
+        completed = true;
         for (const entry of activeEntries) {
           if (activeFlips.get(entry.element) === active) {
             activeFlips.delete(entry.element);
@@ -293,7 +294,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       };
       const active = {
         cancel: () => {
-          supersededAll = true;
+          anySuperseded = true;
           ctrl.cancel();
           cleanup();
           resolveSuperseded?.();
@@ -302,13 +303,44 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       for (const entry of activeEntries) {
         activeFlips.set(entry.element, active);
       }
-      onControlsCancel(ctrl, cleanup);
-      void baseFinished.then(cleanup, cleanup);
-      const settled = Promise.race([baseFinished, superseded]);
-      return Object.create(ctrl, {
+      let settled!: Promise<void>;
+      const observeBase = () => {
+        const base = ctrl.finished;
+        void base.then(cleanup, cleanup);
+        settled = Promise.race([base, superseded]);
+      };
+      observeBase();
+      const wrapped: MorphControls = Object.create(ctrl, {
+        cancel: {
+          value: () => {
+            ctrl.cancel();
+            cleanup();
+            notifyControlsCanceled(wrapped);
+          },
+        },
+        restart: {
+          value: () => {
+            completed = false;
+            ctrl.restart();
+            observeBase();
+          },
+        },
+        play: {
+          value: () => {
+            const wasCompleted = completed;
+            if (wasCompleted) completed = false;
+            ctrl.play();
+            if (wasCompleted) observeBase();
+          },
+        },
         finished: { get: () => settled },
         then: { value: (onFulfilled: any, onRejected: any) => settled.then(onFulfilled, onRejected) },
-      }) as MorphControls;
+      });
+      onControlsCancel(ctrl, () => {
+        cleanup();
+        notifyControlsCanceled(wrapped);
+      });
+      return wrapped;
     }
 
     const { delay, onStart, onUpdate, onComplete, onCancel, scale: _s, spring: _sp, targets: _t, fade: _f, prune: _p, ...shared } = resolvedOpts;
@@ -329,8 +361,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
         ? backend.spring([entry.element], entry.properties, springOpts, elOpts)
         : backend.animate([entry.element], entry.properties, elOpts);
 
-      // Read ctrl.finished once so thenables like Anime.js v4 don't drop earlier subscribers.
-      const baseFinished = ctrl.finished;
+      // Read ctrl.finished once per run so thenables like Anime.js v4 don't drop earlier subscribers.
       let resolveSuperseded: (() => void) | undefined;
       const superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
       let cleaned = false;
@@ -345,9 +376,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       const active = {
         cancel: () => {
           supersededCount++;
-          if (supersededCount >= activeEntries.length) {
-            supersededAll = true;
-          }
+          anySuperseded = true;
           ctrl.cancel();
           cleanup();
           resolveSuperseded?.();
@@ -355,10 +384,31 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       };
       activeFlips.set(entry.element, active);
       onControlsCancel(ctrl, cleanup);
-      void baseFinished.then(cleanup, cleanup);
 
-      const elementFinished = Promise.race([baseFinished, superseded]);
+      let elementFinished!: Promise<void>;
+      const observeBase = () => {
+        const base = ctrl.finished;
+        void base.then(cleanup, cleanup);
+        elementFinished = Promise.race([base, superseded]);
+      };
+      observeBase();
+
       return Object.create(ctrl, {
+        restart: {
+          value: () => {
+            cleaned = false;
+            ctrl.restart();
+            observeBase();
+          },
+        },
+        play: {
+          value: () => {
+            const wasCleaned = cleaned;
+            if (wasCleaned) cleaned = false;
+            ctrl.play();
+            if (wasCleaned) observeBase();
+          },
+        },
         finished: { get: () => elementFinished },
         then: { value: (onFulfilled: any, onRejected: any) => elementFinished.then(onFulfilled, onRejected) },
       }) as MorphControls;
@@ -367,7 +417,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
     return groupControls(
       perElement,
       () => {
-        if (supersededCount < activeEntries.length) {
+        if (supersededCount === 0) {
           onComplete?.();
         }
       },
@@ -485,7 +535,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
   });
 
   animControls.finished.then(() => {
-    if (!canceled && !supersededAll) {
+    if (!canceled && !anySuperseded) {
       animationEvents.emit('complete', {
         type: 'complete',
         target: elements,

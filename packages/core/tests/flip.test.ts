@@ -641,5 +641,81 @@ describe('Core layout FLIP transitions', () => {
     expect(first.cancelSpy).toHaveBeenCalledOnce();
     second.complete();
     await c2.finished;
+
+    // Direct cancel on custom layout adapter unregisters from stateManager even if finished stays pending
+    const third = createManualControls();
+    layoutSpy.mockReturnValueOnce(third.controls);
+    const c3 = flip(el as any, () => el.setRect({ left: 300, top: 0 }), { adapter: custom.name });
+    expect(stateManager.count).toBe(1);
+    c3.cancel();
+    expect(stateManager.count).toBe(0);
+  });
+
+  it('re-observes finished on restart() and suppresses onComplete on partial supersede', async () => {
+    let resolveRun!: () => void;
+    let currentFinished = new Promise<void>(resolve => { resolveRun = resolve; });
+    const restartable: MorphControls = {
+      play: () => {},
+      pause: () => {},
+      reverse: () => {},
+      cancel: () => {},
+      finish: () => {},
+      restart: () => {
+        currentFinished = new Promise<void>(resolve => { resolveRun = resolve; });
+      },
+      progress: 0,
+      currentTime: 0,
+      playState: 'running',
+      commitStyles: () => {},
+      get finished() { return currentFinished; },
+      then: (onFulfilled, onRejected) => currentFinished.then(onFulfilled, onRejected),
+    };
+    vi.spyOn(motionAdapter, 'animate').mockReturnValueOnce(restartable);
+
+    const onComplete = vi.fn();
+    const el = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const controls = flip(el as any, () => el.setRect({ left: 100, top: 0 }), { onComplete });
+
+    resolveRun();
+    await controls.finished;
+    await Promise.resolve();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    controls.restart();
+    await Promise.resolve();
+    await Promise.resolve();
+    // Should not fire onComplete early while replayed run is still pending
+    expect(onComplete).toHaveBeenCalledTimes(1);
+
+    resolveRun();
+    await controls.finished;
+    await Promise.resolve();
+    expect(onComplete).toHaveBeenCalledTimes(2);
+
+    // Partial supersede: superseding 1 of 2 elements suppresses original group's onComplete
+    const mA = createManualControls();
+    const mB = createManualControls();
+    const mA2 = createManualControls();
+    vi.spyOn(motionAdapter, 'animate')
+      .mockReturnValueOnce(mA.controls)
+      .mockReturnValueOnce(mB.controls)
+      .mockReturnValueOnce(mA2.controls);
+
+    const onGroupComplete = vi.fn();
+    const a = new FakeElement({ left: 0, top: 0, width: 50, height: 50 });
+    const b = new FakeElement({ left: 60, top: 0, width: 50, height: 50 });
+    const group = flip([a, b] as any, () => {
+      a.setRect({ left: 60, top: 0 });
+      b.setRect({ left: 0, top: 0 });
+    }, { onComplete: onGroupComplete });
+
+    const replacement = flip(a as any, () => a.setRect({ left: 120, top: 0 }));
+    mB.complete();
+    await group.finished;
+    await Promise.resolve();
+    expect(onGroupComplete).not.toHaveBeenCalled();
+
+    mA2.complete();
+    await replacement.finished;
   });
 });
