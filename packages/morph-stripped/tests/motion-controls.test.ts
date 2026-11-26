@@ -66,6 +66,55 @@ it('reverses a paused Motion tween from its current position', async () => {
   }
 });
 
+it('seeks and reverses a delayed JS tween on its rendered playhead', async () => {
+  const target = { value: 0 };
+  const controls = animate(target as any, { value: [0, 100] }, {
+    engine: 'motion', duration: 2, delay: 0.5, autoplay: false, ease: 'linear',
+  });
+  try {
+    controls.seek?.(1);
+    await vi.advanceTimersByTimeAsync(64);
+    expect(target.value).toBeCloseTo(50);
+    expect(controls.currentTime).toBeCloseTo(1);
+    expect(controls.progress).toBeCloseTo(0.5);
+
+    controls.play();
+    await vi.advanceTimersByTimeAsync(160);
+    const forward = target.value;
+    expect(forward).toBeGreaterThan(55);
+    controls.reverse();
+    await vi.advanceTimersByTimeAsync(160);
+    expect(target.value).toBeGreaterThan(forward - 10);
+    expect(target.value).toBeLessThan(forward - 6);
+
+    controls.pause();
+    await vi.advanceTimersByTimeAsync(64);
+    const paused = target.value;
+    expect(paused).toBeGreaterThan(40);
+    expect(paused).toBeLessThan(55);
+    controls.play();
+    await vi.advanceTimersByTimeAsync(160);
+    expect(target.value).toBeGreaterThan(paused - 10);
+    expect(target.value).toBeLessThan(paused - 6);
+
+    controls.pause();
+    controls.seek?.(0.5);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(controls.currentTime).toBeCloseTo(0.5);
+    await vi.advanceTimersByTimeAsync(64);
+    expect(target.value).toBeCloseTo(25);
+    expect(controls.currentTime).toBeCloseTo(0.5);
+
+    controls.seek?.(0.75);
+    controls.play();
+    await vi.advanceTimersByTimeAsync(160);
+    expect(target.value).toBeGreaterThan(28);
+    expect(target.value).toBeLessThan(31);
+  } finally {
+    controls.cancel();
+  }
+});
+
 it('reverses each track from its own position after another track finishes', async () => {
   const target = { short: 0, long: 0 };
   const options = {

@@ -27,42 +27,103 @@ export const loadGsap = load(async () => {
   return { ...scroll, ...morph, ...draw };
 });
 
-export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
+export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion').frame): MorphControls {
   const isA = type === 'a', isG = type === 'g', isM = type === 'm';
   const tracks = isM ? anim.animations ?? [anim] : [];
+  const legacyEnds = isM && !('state' in anim) ? new WeakMap<object, number>() : undefined;
+  if (legacyEnds) {
+    for (const track of tracks) {
+      if (typeof track.attachTimeline !== 'function' || !('resolved' in track) || !track.options?.motionValue) continue;
+      const { onComplete, motionValue } = track.options;
+      track.options.onComplete = () => {
+        const resolved = track.resolved;
+        if (resolved?.animation) {
+          // Motion 11 always commits the forward keyframe, then cancels and loses the native playhead.
+          legacyEnds.set(track, track.time);
+          if (track.speed < 0) motionValue.set(resolved.keyframes[0]);
+        }
+        onComplete?.();
+      };
+    }
+  }
+  const pendingTimes = isM ? new WeakMap<object, { time: number }>() : undefined;
+  const readTime = (track: any) => pendingTimes?.get(track)?.time ?? track.time ?? 0;
+  const delayOf = (track: any) => {
+    const driver = track.animation ?? track;
+    return typeof driver.tick === 'function' ? (driver.options?.delay ?? 0) / 1000 : 0;
+  };
+  const writeTime = (track: any, time: number, delay = delayOf(track)) => {
+    // Motion's JS driver reads sampled time but writes time before its direction-dependent delay.
+    track.time = time + (track.speed < 0 ? -delay : delay);
+    if (delay && frame && pendingTimes) {
+      const pending = { time };
+      pendingTimes.set(track, pending);
+      frame.update(() => frame.postRender(() => {
+        if (pendingTimes.get(track) === pending) pendingTimes.delete(track);
+      }));
+    }
+  };
   const playMotion = (backward = false) => {
     for (const track of tracks) {
-      const { speed, state, time } = track;
+      const { speed, state } = track;
+      const time = legacyEnds?.get(track) ?? readTime(track);
+      legacyEnds?.delete(track);
+      const delay = delayOf(track);
       if (backward) track.speed = -Math.abs(speed || 1);
-      if (backward && state === 'running') continue;
-      track.play();
+      const running = state === 'running';
+      if (!backward || !running) track.play();
       // Motion's JS driver resumes a paused animation as though its speed were forward.
-      if ((backward || speed < 0) && state !== 'running') {
-        track.time = state === 'finished' && speed >= 0 && time === 0 ? track.duration : time;
+      if ((!running && (backward || speed < 0)) || (running && delay && backward && speed >= 0)) {
+        writeTime(track, state === 'finished' && speed >= 0 && time === 0 ? track.duration : time, delay);
       }
     }
   };
   return {
     play: () => isM ? playMotion() : anim.play?.(),
-    pause: () => anim.pause?.(),
+    pause: () => {
+      if (!isM) return anim.pause?.();
+      for (const track of tracks) {
+        const delay = delayOf(track);
+        const time = delay ? readTime(track) : 0;
+        track.pause();
+        if (delay) writeTime(track, time, delay);
+      }
+    },
     reverse: () => isM ? playMotion(true) : anim.reverse?.(),
-    cancel: () => isG ? anim.kill() : isA ? (anim.pause?.(), anim.seek?.(0)) : anim.cancel?.(),
+    cancel: () => {
+      if (!isM) return isG ? anim.kill() : (anim.pause?.(), anim.seek?.(0));
+      for (const track of tracks) {
+        pendingTimes?.delete(track);
+        legacyEnds?.delete(track);
+      }
+      anim.cancel?.();
+    },
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => {
       if (!isM) return anim.restart?.();
-      for (const track of tracks) if (track.speed < 0) track.speed *= -1;
+      for (const track of tracks) {
+        pendingTimes?.delete(track);
+        legacyEnds?.delete(track);
+        if (track.speed < 0) track.speed *= -1;
+      }
       anim.cancel?.();
       anim.play?.();
     },
-    seek: (t: number) => isG ? anim.seek(t) : isA ? anim.seek?.(t * 1000) : (anim.time = t),
+    seek: (t: number) => {
+      if (!isM) return isG ? anim.seek(t) : anim.seek?.(t * 1000);
+      for (const track of tracks) {
+        legacyEnds?.delete(track);
+        writeTime(track, t);
+      }
+    },
     get duration() {
       return isG ? (anim.duration?.() ?? 0) : isA ? ((anim.duration || 0) / 1000) : (anim.duration ?? (anim.generator?.duration ?? 0.3));
     },
     get progress() {
-      if (isM) return anim.duration ? Math.max(0, Math.min(1, anim.time / anim.duration)) : 0;
+      if (isM) return anim.duration ? Math.max(0, Math.min(1, this.currentTime / anim.duration)) : 0;
       return (isG ? anim.progress() : anim.progress) ?? 0;
     },
-    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : tracks.length ? anim.time : 0) ?? 0; },
+    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : tracks.length ? readTime(tracks[0]) : 0) ?? 0; },
     get playState() {
       if (isG) return (!anim.isActive() && anim.progress() >= 1) ? 'finished' : anim.paused() ? 'paused' : anim.isActive() ? 'running' : 'idle';
       if (isA) return anim.completed ? 'finished' : anim.paused ? 'paused' : 'running';
@@ -189,11 +250,11 @@ export function runSpring(motion: any, tgts: any, kf: any, opt?: MorphSpringOpti
     if (Array.isArray(v) && v.length > 2) { seq = true; s1[k] = [v[0], v[1]]; s2[k] = v[v.length - 1]; }
     else s1[k] = v;
   }
-  if (!seq) return wrap(motion.animate(tgts, kf, { ...opt, type: 'spring' }), 'm');
+  if (!seq) return wrap(motion.animate(tgts, kf, { ...opt, type: 'spring' }), 'm', motion.frame);
 
-  const c1 = wrap(motion.animate(tgts, s1, { ...opt, type: 'spring' }), 'm');
+  const c1 = wrap(motion.animate(tgts, s1, { ...opt, type: 'spring' }), 'm', motion.frame);
   let c2: any, cx = false;
-  const fin = c1.finished.then(() => cx ? undefined : (c2 = wrap(motion.animate(tgts, s2, { ...opt, type: 'spring' }), 'm'), c2.finished));
+  const fin = c1.finished.then(() => cx ? undefined : (c2 = wrap(motion.animate(tgts, s2, { ...opt, type: 'spring' }), 'm', motion.frame), c2.finished));
 
   return {
     play: () => (c2 || c1).play(),
