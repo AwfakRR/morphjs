@@ -513,6 +513,52 @@ it.each([['<<', 0], ['<<+=0.25', 0.25]] as const)('starts a nested Anime segment
   }
 });
 
+it('resolves a GSAP percentage gap from the attached Anime child duration', async () => {
+  const target = { x: 0 };
+  const duration = vi.fn(() => 2000);
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration, ease: 'linear' });
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 1 })
+    .add(child, '+=50%');
+
+  try {
+    parent.seek(2.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2.5));
+    expect(parent.duration).toBeCloseTo(4);
+    expect(target.x).toBeCloseTo(25);
+    expect(duration).toHaveBeenCalledTimes(1);
+    parent.seek(1.5);
+    expect(target.x).toBeCloseTo(0);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('keeps a percentage-positioned Anime child off the shared GSAP-driven Anime clock', async () => {
+  const first = { x: 0 };
+  const second = { x: 0 };
+  const shared = timeline({ autoplay: false })
+    .add(first, { x: [0, 100], duration: 4, ease: 'linear' });
+  const isolated = timeline({ autoplay: false })
+    .add(second, { x: [0, 100], duration: 2, ease: 'linear' });
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add(shared, 0)
+    .add(isolated, '<+=50%');
+
+  try {
+    parent.seek(1.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.5));
+    expect(first.x).toBeCloseTo(37.5);
+    expect(second.x).toBeCloseTo(25);
+    isolated.seek(1.5);
+    expect(first.x).toBeCloseTo(37.5);
+    expect(second.x).toBeCloseTo(75);
+  } finally {
+    parent.cancel();
+  }
+});
+
 it('does not count the Anime host loop default on nested completion timers', async () => {
   const target = { x: 0 };
   const leaf = timeline({ autoplay: false })
