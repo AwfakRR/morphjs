@@ -258,7 +258,8 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
               const offset = animeOffset(realTl, toAnimePosition(o));
               const params = toAnimeOptions(p, undefined, true);
               const replay = { ...realTl.defaults, ...params };
-              const targets = anime.$(t);
+              const { $, get } = anime.utils;
+              const targets = $(t);
               for (const property of Object.keys(params)) {
                 if (property in realTl.defaults) continue;
                 const starts = new Map<object, any>();
@@ -267,7 +268,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
                   if (!first) firstProperties.set(target, first = new Map());
                   if (!first.has(property) || offset < first.get(property)!) {
                     first.set(property, offset);
-                    starts.set(target, anime.get(target, property));
+                    starts.set(target, get(target, property));
                   }
                 }
                 if (starts.size) replay[property] = withAnimeStart(params[property], target => starts.get(target));
