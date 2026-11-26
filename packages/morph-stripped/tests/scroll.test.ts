@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scroll } from '../src/index';
 import type { MorphControls } from '../src/types';
 
@@ -8,8 +8,6 @@ const { create, to } = vi.hoisted(() => ({
 }));
 vi.mock('gsap', () => ({ gsap: { registerPlugin: vi.fn(), to } }));
 vi.mock('gsap/ScrollTrigger', () => ({ ScrollTrigger: { create } }));
-
-beforeEach(() => vi.stubGlobal('window', new EventTarget()));
 
 afterEach(() => {
   vi.resetAllMocks();
