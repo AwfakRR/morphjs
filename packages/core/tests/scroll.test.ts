@@ -184,11 +184,21 @@ describe('core scroll routing', () => {
   });
 
   it('tracks the full horizontal range when a scroller has no target', async () => {
+    const bordered = { clientWidth: 272, offsetWidth: 320, scrollWidth: 960 };
     create.mockReturnValue({ kill: vi.fn() });
-    await scroll(vi.fn(), { container, axis: 'x', scrub: true }).finished;
+    await scroll(vi.fn(), { container: bordered as Element, axis: 'x', scrub: true }).finished;
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      scroller: container, horizontal: true, start: 0, end: 'max',
+      scroller: bordered, horizontal: true, start: 0, end: expect.any(Function),
     }));
+    const [{ end, onRefresh }] = create.mock.lastCall!;
+    expect(end()).toBe(688);
+
+    const setPositions = vi.fn();
+    onRefresh({ end: 688, setPositions });
+    expect(setPositions).not.toHaveBeenCalled();
+    bordered.scrollWidth += 100;
+    onRefresh({ end: 688, setPositions });
+    expect(setPositions).toHaveBeenCalledWith(0, 788);
   });
 
   it('resolves viewport units as pixels on ScrollTrigger refresh', async () => {

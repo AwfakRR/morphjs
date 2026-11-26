@@ -255,12 +255,14 @@ export const gsapAdapter: IAnimationAdapter = {
       throw new Error('[MorphJS] ScrollTrigger plugin not available. Falling back.');
     }
 
-    const root = typeof document === 'undefined' ? undefined : document.documentElement;
+    const doc = typeof document === 'undefined' ? undefined : document;
+    const root = doc?.documentElement;
+    const container = options?.container;
     const triggerTarget = options?.target ?? root;
     let pin = options?.pin ?? false;
     if (pin) {
       const pinned = pin === true ? triggerTarget : typeof pin === 'string' ? gsap.utils.toArray(pin)[0] : pin;
-      if (!pinned?.parentNode || pinned === root || pinned === pinned.ownerDocument?.body || pinned === options?.container) {
+      if (!pinned?.parentNode || pinned === root || pinned === pinned.ownerDocument?.body || pinned === container) {
         console.warn('[MorphJS] Scroll pinning requires a pinnable element; ignoring pin.');
         pin = false;
       }
@@ -269,16 +271,27 @@ export const gsapAdapter: IAnimationAdapter = {
     const leadingEdge = horizontal ? 'left' : 'top';
     const [start, end] = options?.offset ?? [];
     const fullScrollerRange = !options?.target && !pin && !options?.offset;
+    const scrollerRange = fullScrollerRange && container && container !== root && container !== doc?.body
+      ? () => Math.max(1, horizontal
+        ? container.scrollWidth - container.clientWidth
+        : container.scrollHeight - container.clientHeight)
+      : undefined;
     const vars = {
       trigger: triggerTarget,
-      scroller: options?.container,
+      scroller: container,
       horizontal,
       start: fullScrollerRange ? 0
         : start === undefined ? `${leadingEdge} ${leadingEdge}` : toScrollTriggerOffset(start, horizontal),
-      end: fullScrollerRange ? 'max' : end === undefined
+      end: fullScrollerRange ? scrollerRange ?? 'max' : end === undefined
         ? (pin ? `clamp(${leadingEdge} ${leadingEdge}-=100%)` : horizontal ? 'right right' : 'bottom bottom')
         : toScrollTriggerOffset(end, horizontal),
       pin,
+      ...(scrollerRange && {
+        onRefresh: (self: { end: number; setPositions(start: number, end: number): void }) => {
+          const max = scrollerRange();
+          if (self.end !== max) self.setPositions(0, max);
+        },
+      }),
     };
 
     if (typeof animationOrCallback === 'function') {
