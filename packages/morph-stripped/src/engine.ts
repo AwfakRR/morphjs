@@ -105,6 +105,7 @@ export function toAnimeOptions(props: Record<string, any>, opt?: any): Record<st
   const r = { ...props };
   const ease = opt?.ease || r.ease;
   if (Array.isArray(ease)) r.ease = cubicBezier(ease);
+  else if (typeof ease === 'string' && /^ease[A-Z]/.test(ease)) r.ease = ease[4].toLowerCase() + ease.slice(5);
   else if (opt?.ease) r.ease = opt.ease;
   if (!opt) return r;
   if (opt.duration !== undefined) r.duration = opt.duration * 1000;
