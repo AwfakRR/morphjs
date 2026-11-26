@@ -28,24 +28,48 @@ export const loadGsap = load(async () => {
 });
 
 export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
-  const isA = type === 'a', isG = type === 'g';
+  const isA = type === 'a', isG = type === 'g', isM = type === 'm';
+  const hasMotionAnimations = isM && anim.animations?.length !== 0;
+  const playBackward = (time: number) => {
+    anim.play();
+    // Motion's JS driver resumes a paused animation as though its speed were forward.
+    anim.time = time;
+  };
   return {
-    play: () => anim.play?.(),
+    play: () => {
+      if (hasMotionAnimations && anim.speed < 0 && anim.state !== 'running') playBackward(anim.time);
+      else anim.play?.();
+    },
     pause: () => anim.pause?.(),
-    reverse: () => anim.reverse?.(),
+    reverse: () => {
+      if (!isM) return anim.reverse?.();
+      if (!hasMotionAnimations) return;
+      const { speed, state, time, duration } = anim;
+      anim.speed = -Math.abs(speed || 1);
+      if (state === 'running') return;
+      playBackward(state === 'finished' && speed >= 0 && time === 0 ? duration : time);
+    },
     cancel: () => isG ? anim.kill() : isA ? (anim.pause?.(), anim.seek?.(0)) : anim.cancel?.(),
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
-    restart: () => (isG || isA) ? anim.restart?.() : (anim.cancel?.(), anim.play?.()),
-    seek: (t: number) => isG ? anim.seek(t) : isA ? anim.seek?.(t * 1000) : (anim.seek ? anim.seek(t) : anim.currentTime = t),
+    restart: () => {
+      if (!isM) return anim.restart?.();
+      if (hasMotionAnimations && anim.speed < 0) anim.speed *= -1;
+      anim.cancel?.();
+      anim.play?.();
+    },
+    seek: (t: number) => isG ? anim.seek(t) : isA ? anim.seek?.(t * 1000) : (anim.time = t),
     get duration() {
       return isG ? (anim.duration?.() ?? 0) : isA ? ((anim.duration || 0) / 1000) : (anim.duration ?? (anim.generator?.duration ?? 0.3));
     },
-    get progress() { return (isG ? anim.progress() : anim.progress) ?? 0; },
-    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : anim.currentTime) ?? 0; },
+    get progress() {
+      if (isM) return anim.duration ? Math.max(0, Math.min(1, anim.time / anim.duration)) : 0;
+      return (isG ? anim.progress() : anim.progress) ?? 0;
+    },
+    get currentTime() { return (isG ? anim.time() : isA ? anim.currentTime / 1000 : hasMotionAnimations ? anim.time : 0) ?? 0; },
     get playState() {
       if (isG) return (!anim.isActive() && anim.progress() >= 1) ? 'finished' : anim.paused() ? 'paused' : anim.isActive() ? 'running' : 'idle';
       if (isA) return anim.completed ? 'finished' : anim.paused ? 'paused' : 'running';
-      return anim.playState || 'running';
+      return hasMotionAnimations ? anim.state ?? 'running' : 'idle';
     },
     get finished() { return Promise.resolve(anim.then ? anim.then() : anim.finished || anim); },
     commitStyles: () => anim.commitStyles?.(),

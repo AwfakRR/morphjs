@@ -27,34 +27,47 @@ export function getMotionSync(): typeof import('motion') {
 }
 
 export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
+  const hasAnimations = motionAnimation.animations?.length !== 0;
+  const playBackward = (time: number) => {
+    motionAnimation.play();
+    // Motion's JS driver resumes a paused animation as though its speed were forward.
+    motionAnimation.time = time;
+  };
+
   const controls: MorphControls = {
-    play: () => motionAnimation.play(),
+    play: () => {
+      if (hasAnimations && motionAnimation.speed < 0 && motionAnimation.state !== 'running') {
+        playBackward(motionAnimation.time);
+      } else motionAnimation.play();
+    },
     pause: () => motionAnimation.pause(),
     cancel: () => {
       motionAnimation.cancel();
       notifyControlsCanceled(controls);
     },
     finish: () => motionAnimation.finish(),
-    reverse: () => motionAnimation.reverse(),
-    seek: (time: number) => {
-      if (typeof motionAnimation.seek === 'function') motionAnimation.seek(time);
-      else if ('currentTime' in motionAnimation) motionAnimation.currentTime = time;
-      else if ('time' in motionAnimation) motionAnimation.time = time;
+    reverse: () => {
+      if (!hasAnimations) return;
+      const { speed, state, time, duration } = motionAnimation;
+      motionAnimation.speed = -Math.abs(speed || 1);
+      if (state === 'running') return;
+      playBackward(state === 'finished' && speed >= 0 && time === 0 ? duration : time);
     },
+    seek: (time: number) => { motionAnimation.time = time; },
     get duration() {
       return motionAnimation.duration;
     },
     get progress() {
-      return motionAnimation.progress ?? 0;
+      return motionAnimation.duration ? Math.max(0, Math.min(1, motionAnimation.time / motionAnimation.duration)) : 0;
     },
     get currentTime() {
-      return motionAnimation.currentTime ?? 0;
+      return hasAnimations ? motionAnimation.time ?? 0 : 0;
     },
     get finished() {
       return Promise.resolve(finished ?? motionAnimation.finished);
     },
     get playState() {
-      return motionAnimation.playState;
+      return hasAnimations ? motionAnimation.state ?? 'running' : 'idle';
     },
     commitStyles: () => {
       if (typeof motionAnimation.commitStyles === 'function') {
@@ -65,6 +78,7 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
       return Promise.resolve(finished ?? motionAnimation.finished).then(onfulfilled, onrejected);
     },
     restart: () => {
+      if (hasAnimations && motionAnimation.speed < 0) motionAnimation.speed *= -1;
       motionAnimation.cancel();
       motionAnimation.play();
     }
