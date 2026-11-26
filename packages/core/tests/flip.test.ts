@@ -717,5 +717,17 @@ describe('Core layout FLIP transitions', () => {
 
     mA2.complete();
     await replacement.finished;
+
+    // Opacity-only FLIP does not touch or overwrite inline transforms set before/between runs
+    const fadeManual = createManualControls();
+    vi.spyOn(motionAdapter, 'animate').mockReturnValueOnce(fadeManual.controls);
+    const fadeEl = new FakeElement({ left: 0, top: 0, width: 100, height: 100 }, { opacity: '0.2' });
+    const fadeCtrl = flip(fadeEl as any, () => {
+      fadeEl.computedOpacity = '1';
+    }, { fade: true });
+    fadeEl.style.transform = 'rotate(15deg)';
+    fadeManual.complete();
+    await fadeCtrl.finished;
+    expect(fadeEl.style.transform).toBe('rotate(15deg)');
   });
 });

@@ -257,8 +257,11 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
     ease,
   };
 
+  const hasTransformDelta = (entry: MeasuredEntry) =>
+    entry.dx !== 0 || entry.dy !== 0 || entry.scaleX !== 1 || entry.scaleY !== 1;
+
   const clearInlineTransform = (entry: MeasuredEntry) => {
-    if (isStyledElement(entry.element)) {
+    if (hasTransformDelta(entry) && isStyledElement(entry.element)) {
       entry.element.style.transform = entry.savedTransform ?? '';
     }
   };
@@ -363,7 +366,8 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
 
       // Read ctrl.finished once per run so thenables like Anime.js v4 don't drop earlier subscribers.
       let resolveSuperseded: (() => void) | undefined;
-      const superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+      let superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+      let wasSuperseded = false;
       let cleaned = false;
       const cleanup = () => {
         if (cleaned) return;
@@ -375,8 +379,11 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       };
       const active = {
         cancel: () => {
-          supersededCount++;
-          anySuperseded = true;
+          if (!wasSuperseded) {
+            wasSuperseded = true;
+            supersededCount++;
+            anySuperseded = true;
+          }
           ctrl.cancel();
           cleanup();
           resolveSuperseded?.();
@@ -391,22 +398,32 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
         void base.then(cleanup, cleanup);
         elementFinished = Promise.race([base, superseded]);
       };
+      const resetForReplay = () => {
+        cleaned = false;
+        if (wasSuperseded) {
+          wasSuperseded = false;
+          supersededCount = Math.max(0, supersededCount - 1);
+          if (supersededCount === 0) anySuperseded = false;
+          superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+        }
+        activeFlips.set(entry.element, active);
+      };
       observeBase();
 
       return Object.create(ctrl, {
         restart: {
           value: () => {
-            cleaned = false;
+            resetForReplay();
             ctrl.restart();
             observeBase();
           },
         },
         play: {
           value: () => {
-            const wasCleaned = cleaned;
-            if (wasCleaned) cleaned = false;
+            const wasDone = cleaned;
+            if (wasDone) resetForReplay();
             ctrl.play();
-            if (wasCleaned) observeBase();
+            if (wasDone) observeBase();
           },
         },
         finished: { get: () => elementFinished },
