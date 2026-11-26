@@ -422,3 +422,26 @@ it('resolves an initialized Anime child’s finished promise when its parent rea
     parent.cancel();
   }
 });
+
+it('samples overlapping Anime children at the GSAP parent time in both directions', async () => {
+  const long = { x: 0 };
+  const short = { x: 0 };
+  const child = timeline({ autoplay: false }).add(long as any, { x: [0, 100], duration: 2, ease: 'linear' });
+  const overlap = timeline({ autoplay: false }).add(short as any, { x: [0, 100], duration: 0.5, ease: 'linear' });
+  const parent = timeline({ engine: 'gsap', autoplay: false }).add(child, 0).add(overlap, 0.5);
+
+  try {
+    parent.seek(1.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.5));
+    expect(long.x).toBeCloseTo(75);
+    expect(short.x).toBeCloseTo(100);
+    parent.seek(0.75);
+    expect(long.x).toBeCloseTo(37.5);
+    expect(short.x).toBeCloseTo(50);
+    parent.seek(0.25);
+    expect(long.x).toBeCloseTo(12.5);
+    expect(short.x).toBeCloseTo(0);
+  } finally {
+    parent.cancel();
+  }
+});

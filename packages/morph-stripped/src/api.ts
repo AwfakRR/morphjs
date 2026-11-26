@@ -233,16 +233,21 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             tl.paused(false);
           } else {
             const controls = t as MorphTimeline;
-            const clock = {
-              get time() { return controls.currentTime; },
-              set time(time: number) { controls.seek(time); },
-            };
             if (engine === 'a') {
-              realTl.fromTo(clock, { time: 0 }, { time: controls.duration, duration: controls.duration, ease: 'none', immediateRender: false }, p);
               mixedHost ??= { tl: animeModule.createTimeline({ autoplay: false }) };
+              const host = mixedHost;
+              const clock = {
+                get time() { return 0; },
+                set time(_: number) { host.tl.seek(realTl.time() * 1000); },
+              };
+              realTl.fromTo(clock, { time: 0 }, { time: 1, duration: controls.duration, ease: 'none', immediateRender: false }, p);
               child.replay(mixedHost, realTl.recent().startTime() * 1000);
             } else {
               controls.pause();
+              const clock = {
+                get time() { return controls.currentTime; },
+                set time(time: number) { controls.seek(time); },
+              };
               const offset = animeOffset(realTl, toAnimePosition(p));
               addAnimeTrack((host, start) => host.tl.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, start + offset));
             }
