@@ -3,6 +3,7 @@ import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
+import { motionAdapter } from '../adapters/motion-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
 import { createNoopControls, notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 import { inView } from './in-view';
@@ -89,9 +90,24 @@ function trackScroll(
     } else {
       const deferred = createDeferredControls();
       let canceled = false;
-      const unsubscribe = onControlsCancel(deferred.controls, () => { canceled = true; });
+      const motionAnimation = adapter === motionAdapter && typeof animationOrCallback !== 'function'
+        ? animationOrCallback : undefined;
+      const stopWatchingAnimation = motionAnimation && onControlsCancel(motionAnimation, () => {
+        canceled = true;
+        deferred.controls.cancel();
+      });
+      const stopWatchingLink = onControlsCancel(deferred.controls, () => {
+        const wasCanceled = canceled;
+        canceled = true;
+        stopWatchingAnimation?.();
+        if (!wasCanceled) motionAnimation?.cancel();
+      });
+      const detach = () => {
+        stopWatchingAnimation?.();
+        stopWatchingLink();
+      };
       void ensure().then(() => {
-        unsubscribe();
+        detach();
         if (canceled) return;
         if (!adapter.scroll) return deferred.resolve(fallback());
         let result: MorphControls;
@@ -102,7 +118,7 @@ function trackScroll(
         }
         deferred.resolve(result);
       }, () => {
-        unsubscribe();
+        detach();
         if (!canceled) deferred.resolve(fallback());
       }).catch(deferred.reject);
       controls = deferred.controls;

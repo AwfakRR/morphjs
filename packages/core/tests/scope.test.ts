@@ -188,6 +188,29 @@ it('cancels a Motion tween only once when its scroll link belongs to the same sc
   expect(onCancel).toHaveBeenCalledOnce();
 });
 
+it.each([false, true])('cancels a tween once before its Motion scroll link loads (owns tween: %s)', async ownsTween => {
+  makeScroller();
+  const scope = createScope();
+  const onCancel = vi.fn();
+  const target = { value: 0 };
+  const tween = morph.animate(target as unknown as MorphTargets, { value: 100 }, { duration: 1, onCancel });
+  if (ownsTween) scope.add(tween);
+  const scroll = vi.spyOn(motionAdapter, 'scroll').mockImplementationOnce(() => { throw new Error('Motion loading'); });
+  const add = vi.spyOn(window, 'addEventListener');
+  try {
+    scope.scroll(tween);
+    scope.revert();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(target.value).toBe(0);
+    expect(scroll).toHaveBeenCalledOnce();
+    expect(add).not.toHaveBeenCalledWith('scroll', expect.any(Function), expect.anything());
+  } finally {
+    scope.revert();
+    if (!onCancel.mock.calls.length) tween.cancel();
+  }
+});
+
 it.each(['anime', 'gsap'])('tracks a completed %s timeline again when it is restarted and re-added', async engine => {
   const scope = createScope();
   const timeline = scope.timeline({ engine, defaults: { duration: 0.4 } })
