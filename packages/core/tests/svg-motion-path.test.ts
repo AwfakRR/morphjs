@@ -151,7 +151,7 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     next.finish();
     await next.finished;
     expect(marker.style.transform).toBe(`translate(40px,60px) ${offset} rotate(90deg) ${linear}`);
-    expect(getComputedStyle).toHaveBeenCalledTimes(3);
+    expect(getComputedStyle).toHaveBeenCalledTimes(2);
   });
 
   it.each(['inline', 'stylesheet'])('resolves %s centering again after the marker resizes', async source => {
