@@ -126,4 +126,26 @@ describe('core SVG helpers', () => {
     expect(animate).toHaveBeenCalledWith([path], { fill: '#ff0000' },
       expect.objectContaining({ adapter: 'motion' }));
   });
+
+  it('uses a Motion tween when default drawing cannot load Anime', async () => {
+    const controls = createNoopControls();
+    vi.spyOn(animeAdapter, 'svg').mockImplementation(() => { throw new Error('Anime not loaded'); });
+    const ensureAnime = vi.spyOn(animeAdapter, 'ensure').mockRejectedValue(new Error('Anime unavailable'));
+    vi.spyOn(motionAdapter, 'ensure').mockResolvedValue(undefined);
+    const animate = vi.spyOn(motionAdapter, 'animate').mockReturnValue(controls);
+
+    await svg.draw(path).finished;
+
+    expect(ensureAnime).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledWith([path], { strokeDashoffset: [120, 0] }, {});
+  });
+
+  it('settles controls if neither SVG nor tween engines load', async () => {
+    vi.spyOn(animeAdapter, 'svg').mockImplementation(() => { throw new Error('Anime not loaded'); });
+    vi.spyOn(animeAdapter, 'ensure').mockRejectedValue(new Error('Anime unavailable'));
+    vi.spyOn(motionAdapter, 'ensure').mockRejectedValue(new Error('Motion unavailable'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(svg.draw(path).finished).resolves.toBeUndefined();
+  });
 });

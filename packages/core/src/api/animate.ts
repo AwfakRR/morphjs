@@ -13,12 +13,15 @@ export interface AnimateOptions extends MorphAnimationOptions {
 
 export type AnimateArg = number | AnimateOptions;
 
-function createDeferredControls(): { controls: MorphControls; resolve: (controls: MorphControls) => void } {
-  let real: MorphControls | null = null;
+function createDeferredControls(): { controls: MorphControls; resolve: (controls: MorphControls | null) => void } {
+  let real: MorphControls | null | undefined;
   const q: Array<(c: MorphControls) => void> = [];
   let res: () => void, rej: (err: any) => void;
   const finished = new Promise<void>((r, e) => { res = r; rej = e; });
-  const run = (fn: (c: MorphControls) => void) => (real ? fn(real) : q.push(fn));
+  const run = (fn: (c: MorphControls) => void) => {
+    if (real) fn(real);
+    else if (real === undefined) q.push(fn);
+  };
 
   const controls: MorphControls = {
     play: () => run(c => c.play()),
@@ -38,10 +41,14 @@ function createDeferredControls(): { controls: MorphControls; resolve: (controls
 
   return {
     controls,
-    resolve: (c: MorphControls) => {
+    resolve: (c) => {
       real = c;
-      c.finished.then(res, rej);
-      q.forEach(fn => fn(c));
+      if (c) {
+        c.finished.then(res, rej);
+        q.forEach(fn => fn(c));
+      } else {
+        res();
+      }
       q.length = 0;
     },
   };
@@ -71,7 +78,7 @@ export function animateSvg(
   properties: Record<string, any>,
   options: MorphSvgOptions = {}
 ): MorphControls {
-  return runAnimation(targets, properties, { ...options, adapter: options.adapter || 'anime' }, true);
+  return runAnimation(targets, properties, options, true);
 }
 
 function runAnimation(
@@ -88,8 +95,9 @@ function runAnimation(
     opts.duration = 0;
   }
 
+  const defaultSvg = useSvg && !opts.adapter && !opts.engine;
   const adapter = resolveAdapter({
-    adapter: opts.adapter,
+    adapter: defaultSvg ? 'anime' : opts.adapter,
     engine: opts.engine,
     spring: springOpts,
     svg: useSvg,
@@ -122,6 +130,19 @@ function runAnimation(
         }
         resolve(startAnimation());
       } catch (err) {
+        if (defaultSvg) {
+          try {
+            const fallback = resolveAdapter();
+            if (fallback !== adapter) {
+              await fallback.ensure?.();
+              resolve(fallback.animate(animTargets, properties, opts));
+              return;
+            }
+          } catch {
+            // No usable tween adapter.
+          }
+        }
+        if (useSvg) resolve(null);
         console.error('[MorphJS] Deferred animation failed:', err);
       }
     };
