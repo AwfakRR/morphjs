@@ -8,17 +8,20 @@ export type { MorphInViewOptions } from './api/in-view';
 export { gesture } from './api/gesture';
 export { svg } from './api/svg';
 export { createScope } from './api/scope';
+export { flip } from './api/flip';
 
 // Types (re-export all)
 export type { MorphScope } from './api/scope';
 export type { 
   MorphControls, MorphTimeline, MorphAnimationOptions, MorphSpringOptions,
   MorphStaggerOptions, MorphScrollOptions, MorphGestureOptions, MorphSvgOptions,
+  MorphFlipOptions, FlipArg, FlipRect, FlipSnapshot, FlipState, FlipAnimationEntry,
   TimelineOptions, TimelineSegment, MorphTargets, MorphTarget,
   IAnimationAdapter, AdapterPlugin, AdapterCapability, AdapterType,
   MorphConfig, EasingFunction, EasingValue, CubicBezier,
   AnimationEvent, AnimationEventType, GestureInfo
 } from './types';
+export type { FlipCallable } from './api/flip';
 
 // Configuration & utilities
 export { configure, getConfig } from './router';
@@ -45,6 +48,7 @@ import { scroll } from './api/scroll';
 import { gesture } from './api/gesture';
 import { svg } from './api/svg';
 import { createScope } from './api/scope';
+import { flip } from './api/flip';
 import { configure, getConfig } from './router';
 import { stateManager } from './state';
 import { animationEvents } from './events';
@@ -97,6 +101,7 @@ export interface MorphCallable {
   gesture: typeof gesture;
   svg: typeof svg;
   scope: typeof createScope;
+  flip: typeof flip;
   configure: typeof configure;
   getConfig: typeof getConfig;
   state: typeof stateManager;
@@ -116,6 +121,7 @@ export const morph: MorphCallable = Object.assign(
     gesture,
     svg,
     scope: createScope,
+    flip,
     configure,
     getConfig,
     state: stateManager,

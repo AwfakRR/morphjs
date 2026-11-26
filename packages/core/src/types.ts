@@ -121,6 +121,52 @@ export interface MorphSvgOptions extends MorphAnimationOptions {
   morphPrecision?: number;
 }
 
+// Layout / FLIP snapshot & options
+export interface FlipRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface FlipSnapshot {
+  readonly element: Element;
+  readonly rect: FlipRect;
+  readonly flipId?: string;
+  readonly opacity?: number;
+}
+
+export interface FlipState {
+  readonly snapshots: ReadonlyMap<Element, FlipSnapshot>;
+  readonly byId: ReadonlyMap<string, FlipSnapshot>;
+}
+
+export interface FlipAnimationEntry {
+  readonly element: Element;
+  readonly first: FlipRect;
+  readonly last: FlipRect;
+  readonly dx: number;
+  readonly dy: number;
+  readonly scaleX: number;
+  readonly scaleY: number;
+  readonly properties: Record<string, any>;
+}
+
+export interface MorphFlipOptions extends MorphAnimationOptions {
+  /** Animate width/height changes via scaleX/scaleY (default: true). */
+  scale?: boolean;
+  /** Optional spring physics (routes to Motion spring). */
+  spring?: boolean | MorphSpringOptions;
+  /** Target elements to match against the captured state (e.g. for data-flip-id shared elements). */
+  targets?: MorphTargets;
+  /** Animate opacity changes captured between states (default: false). */
+  fade?: boolean;
+  /** Restore pre-FLIP inline transform when the transition completes (default: true). */
+  prune?: boolean;
+}
+
+export type FlipArg = number | MorphFlipOptions;
+
 // Adapter engine identifier
 export type AdapterType = 'motion' | 'anime' | 'gsap' | string;
 
@@ -158,6 +204,7 @@ export interface IAnimationAdapter {
   scroll?(animation: MorphControls | ((progress: number) => void), options?: MorphScrollOptions): MorphControls;
   gesture?(targets: MorphTargets, options?: MorphGestureOptions): (() => void) | { cleanup: () => void };
   svg?(targets: MorphTargets, properties: Record<string, any>, options?: MorphSvgOptions): MorphControls;
+  layout?(entries: FlipAnimationEntry[], options?: MorphFlipOptions): MorphControls;
   ensure?(): Promise<any>;
   
   dispose?(): void;

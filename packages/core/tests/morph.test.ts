@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import morph, { timeline, spring, stagger, scroll, gesture, svg } from '../src/index';
+import morph, { timeline, spring, stagger, scroll, gesture, svg, flip } from '../src/index';
 
 describe('MorphJS Core API', () => {
   it('should be callable directly with duration shorthand', () => {
@@ -25,6 +25,9 @@ describe('MorphJS Core API', () => {
     expect(typeof morph.svg).toBe('object');
     expect(typeof morph.svg.draw).toBe('function');
     expect(typeof morph.svg.morph).toBe('function');
+    expect(typeof morph.flip).toBe('function');
+    expect(typeof morph.flip.capture).toBe('function');
+    expect(typeof morph.flip.from).toBe('function');
   });
 
   it('should create a timeline with seek and playback methods', () => {
@@ -59,5 +62,20 @@ describe('MorphJS Core API', () => {
     const controls = svg.draw({} as any);
     expect(controls).toBeDefined();
     expect(typeof controls.play).toBe('function');
+  });
+
+  it('should return empty state and no-op controls for flip in non-browser environment', async () => {
+    const state = flip.capture('.card');
+    expect(state.snapshots.size).toBe(0);
+    const controls = flip.from(state, 0.3);
+    expect(controls).toBeDefined();
+    await expect(controls.finished).resolves.toBeUndefined();
+
+    const mutate = () => {
+      throw new Error('mutate should not run during SSR');
+    };
+    const oneStep = flip('.card', mutate, 0.3);
+    expect(oneStep).toBeDefined();
+    await expect(oneStep.finished).resolves.toBeUndefined();
   });
 });

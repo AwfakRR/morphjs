@@ -91,6 +91,14 @@ gesture('.draggable', {
 // 7. SVG Draw & Morph (Anime.js default, GSAP MorphSVG for complex shapes)
 svg.draw('.my-path', { duration: 1.5 });
 svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
+
+// 8. Layout FLIP Transitions (in `morphjs` core)
+import { flip } from 'morphjs';
+flip('.card', () => container.classList.toggle('grid'), { duration: 0.4, ease: 'easeOut' });
+// Or two-step for framework/async DOM updates:
+const state = flip.capture('.card');
+reorderCards();
+flip.from(state, { duration: 0.4, spring: true });
 ```
 
 ### Animation Scopes
@@ -122,7 +130,7 @@ No single engine dominates. MorphJS automatically routes each animation to the e
 ┌────────────────────────────────────────────────────────┐
 │                  MorphJS Unified API                   │
 │   animate() · spring() · timeline() · scroll()         │
-│   gesture() · stagger() · svg.draw/morph/attr          │
+│   gesture() · stagger() · svg.draw/morph/attr · flip() │
 └───────────┬────────────────┬───────────────────────────┘
             │                │
       ┌─────▼──────┐   ┌─────▼──────┐   ┌────────────┐

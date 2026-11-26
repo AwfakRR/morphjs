@@ -175,8 +175,20 @@ export const gsapAdapter: IAnimationAdapter = {
     options?: MorphAnimationOptions
   ): MorphControls {
     const { gsap } = getGsapSync();
-    const vars = toGsapVars(properties, options);
-    return afterPlugins(pendingPlugins(vars), () => wrapGsapControls(gsap.to(targets, vars)));
+    const from: Record<string, any> = {};
+    const toProps: Record<string, any> = {};
+    for (const [key, value] of Object.entries(properties)) {
+      if (key !== 'keyframes' && key !== 'ease' && key !== 'endArray' && Array.isArray(value) && value.length === 2) {
+        from[key] = value[0];
+        toProps[key] = value[1];
+      } else {
+        toProps[key] = value;
+      }
+    }
+    const vars = toGsapVars(toProps, options);
+    return afterPlugins(pendingPlugins(vars), () =>
+      wrapGsapControls(Object.keys(from).length ? gsap.fromTo(targets, from, vars) : gsap.to(targets, vars))
+    );
   },
 
   timeline(
