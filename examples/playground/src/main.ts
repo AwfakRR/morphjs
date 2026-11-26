@@ -159,7 +159,7 @@ if (scrollContainer) {
       }
       const parallax = document.getElementById('parallax-element');
       if (parallax) {
-        parallax.style.transform = `translateY(${progress * 60}px) rotate(${progress * 90}deg)`;
+        parallax.style.transform = `translateY(${progress * 40}px) rotate(${progress * 90}deg)`;
       }
     },
     { container: scrollContainer }

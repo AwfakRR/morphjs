@@ -253,7 +253,8 @@ h1 {
 }
 
 .parallax-box {
-  margin-top: 150px;
+  position: sticky;
+  top: 1rem;
 }
 
 /* SVG Demo */
