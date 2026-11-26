@@ -1,6 +1,8 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { morph } from 'morphjs';
 import type { MorphControls, MorphSpringOptions } from 'morphjs';
+
+const useIsomorphicLayoutEffect = typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 interface SpringAnimation {
   proxy: { val: number };
@@ -19,7 +21,7 @@ export function useMorphSpring(initialValue: number, springOptions?: MorphSpring
   const springRef = useRef<SpringAnimation>({ proxy: { val: initialValue }, target: initialValue });
   const mountedRef = useRef(true);
 
-  useEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
