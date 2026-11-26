@@ -92,9 +92,10 @@ requestAnimationFrame(syncScrubSlider);
 
 // --- Demo 4: Stagger Grid ---
 const grid = document.getElementById('stagger-grid');
+const gridSize: [number, number] = [6, 6];
 if (grid) {
   grid.innerHTML = '';
-  for (let i = 0; i < 36; i++) {
+  for (let i = 0; i < gridSize[0] * gridSize[1]; i++) {
     const dot = document.createElement('div');
     dot.className = 'stagger-dot';
     grid.appendChild(dot);
@@ -107,7 +108,7 @@ const btnStagRandom = document.getElementById('btn-stag-random');
 
 btnStagCenter?.addEventListener('click', () => {
   morph('.stagger-dot', { scale: [0.2, 1], opacity: [0.2, 1] }, {
-    delay: stagger(0.04, { from: 'center' }),
+    delay: stagger(0.04, { from: 'center', grid: gridSize }),
     duration: 0.4,
   });
 });
