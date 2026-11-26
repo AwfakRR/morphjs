@@ -5,6 +5,8 @@ import { ensureMotion } from '../src/adapters/motion-adapter';
 describe('Motion springs', () => {
   beforeAll(async () => {
     vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', new EventTarget());
     vi.stubGlobal('Element', class {});
     vi.stubGlobal('NodeList', class {});
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
