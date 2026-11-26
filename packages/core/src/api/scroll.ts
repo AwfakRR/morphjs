@@ -40,8 +40,8 @@ export function scroll(
 
   const adapter = resolveAdapter({
     scroll: true,
-    adapter: (options as any)?.adapter,
-    engine: (options as any)?.engine,
+    adapter: options?.adapter,
+    engine: options?.engine || (!options?.adapter && (options?.pin || options?.scrub) ? 'gsap' : undefined),
   });
   const fallback = (): MorphControls => {
     if (typeof animationOrCallback !== 'function') return animationOrCallback;

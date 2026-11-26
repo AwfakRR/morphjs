@@ -66,6 +66,7 @@ export interface MorphControls {
   finish(): void;
   restart(): void;
   seek?(time: number): void;
+  readonly duration?: number;
   readonly progress: number;
   readonly currentTime: number;
   readonly playState: 'running' | 'paused' | 'finished' | 'idle' | 'cancelled';
@@ -84,6 +85,8 @@ export interface MorphTimeline extends MorphControls {
 
 // Scroll options
 export interface MorphScrollOptions {
+  adapter?: string;
+  engine?: string;
   target?: Element;
   container?: Element;
   axis?: 'x' | 'y';

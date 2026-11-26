@@ -13,7 +13,7 @@ import type {
 } from '../types';
 import { toGsapEasing } from '../easing/easing';
 import { notifyControlsCanceled } from '../utils/controls';
-import { createDeferredControls } from '../utils/deferred-controls';
+import { createDeferredControls, seekControlsProgress } from '../utils/deferred-controls';
 
 /** Cached GSAP module */
 let gsapModule: any = null;
@@ -87,6 +87,9 @@ export function wrapGsapControls(tween: any): MorphControls {
     },
     seek: (time: number) => {
       tween.seek(time);
+    },
+    get duration() {
+      return tween.duration();
     },
     get progress() {
       return tween.progress() ?? 0;
@@ -234,13 +237,19 @@ export const gsapAdapter: IAnimationAdapter = {
       throw new Error('[MorphJS] ScrollTrigger plugin not available. Falling back.');
     }
 
+    const vars = {
+      trigger: options?.target || document.documentElement,
+      scroller: options?.container,
+      start: 'top top',
+      end: 'bottom bottom',
+      pin: options?.pin ?? false,
+    };
+
     if (typeof animationOrCallback === 'function') {
       const trigger = ScrollTrigger.create({
-        trigger: options?.target || document.documentElement,
-        scroller: options?.container,
-        start: 'top top',
-        end: 'bottom bottom',
-        onUpdate: (self: any) => animationOrCallback(self.progress),
+        ...vars,
+        scrub: options?.scrub ?? false,
+        onUpdate: (self: { progress: number }) => animationOrCallback(self.progress),
       });
 
       return {
@@ -260,18 +269,22 @@ export const gsapAdapter: IAnimationAdapter = {
       };
     }
 
-    // For animation controls, create a scrubbed tween
-    const tween = gsap.to({}, {
-      scrollTrigger: {
-        trigger: options?.target || document.documentElement,
-        scroller: options?.container,
-        scrub: true,
-        start: 'top top',
-        end: 'bottom bottom',
-      },
+    animationOrCallback.pause();
+    const playhead = { progress: 0 };
+    const tween = gsap.to(playhead, {
+      progress: 1,
+      duration: 1,
+      ease: 'none',
+      paused: true,
+      onUpdate: () => seekControlsProgress(animationOrCallback, playhead.progress),
     });
-
-    return wrapGsapControls(tween);
+    const trigger = ScrollTrigger.create({ ...vars, scrub: options?.scrub ?? true, animation: tween });
+    const controls = wrapGsapControls(tween);
+    controls.cancel = () => {
+      trigger.kill();
+      notifyControlsCanceled(controls);
+    };
+    return controls;
   },
 
   svg(

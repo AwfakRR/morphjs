@@ -39,6 +39,10 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
     seek: (time: number) => {
       if (typeof motionAnimation.seek === 'function') motionAnimation.seek(time);
       else if ('currentTime' in motionAnimation) motionAnimation.currentTime = time;
+      else if ('time' in motionAnimation) motionAnimation.time = time;
+    },
+    get duration() {
+      return motionAnimation.duration;
     },
     get progress() {
       return motionAnimation.progress ?? 0;
