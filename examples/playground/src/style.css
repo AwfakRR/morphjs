@@ -264,6 +264,8 @@ h1 {
 }
 
 .parallax-box {
+  width: max-content;
+  padding-inline: 0.375rem;
   position: sticky;
   top: 1rem;
 }

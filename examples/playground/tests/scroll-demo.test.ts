@@ -17,6 +17,13 @@ const rule = (selector: string) => {
 
 const px = (value: string) => parseFloat(value) * (value.endsWith('rem') ? 16 : 1);
 
+it('sizes the parallax box to its label with breathing room on both sides', () => {
+  const box = rule('.parallax-box');
+
+  expect(box.width).toBe('max-content');
+  expect(px(box['padding-inline'] ?? '0')).toBeGreaterThan(0);
+});
+
 it('keeps the parallax box inside the scroll viewport at every scroll position', () => {
   const box = rule('.parallax-box');
   const viewport = px(rule('.scroll-container').height);
