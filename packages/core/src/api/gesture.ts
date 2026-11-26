@@ -98,7 +98,13 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const e = event as PointerEvent;
     if (pointerId !== undefined) return;
     stop();
-    state.base ??= readTranslation(el);
+    const current = readTranslation(el);
+    if (current && (!state.base ||
+        !matchesTranslation(current[0], state.base[0] + state.x) ||
+        !matchesTranslation(current[1], state.base[1] + state.y))) {
+      state.base = current;
+      state.x = state.y = 0;
+    }
     pointerId = e.pointerId;
     for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
       axis.from = state[axis.key];
@@ -184,8 +190,12 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   };
 }
 
-function readTranslation(el: Element): [number, number] {
-  if (typeof getComputedStyle === 'undefined') return [0, 0];
+function matchesTranslation(current: number, rendered: number): boolean {
+  return current === rendered || current === Number(Math.fround(rendered).toPrecision(6));
+}
+
+function readTranslation(el: Element): [number, number] | undefined {
+  if (typeof getComputedStyle === 'undefined') return;
   const matrix = /^matrix(3d)?\((.+)\)$/.exec(getComputedStyle(el).transform);
   if (!matrix) return [0, 0];
   const values = matrix[2].split(',');

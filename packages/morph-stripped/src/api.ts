@@ -229,7 +229,7 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
   };
 }
 
-type DragState = { base?: ReturnType<typeof readTranslation>; x: number; y: number };
+type DragState = { base?: string[]; rendered?: string; x: number; y: number };
 const dragStates = new WeakMap<Element, DragState>();
 
 function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): () => void {
@@ -248,6 +248,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   const render = () => {
     const [left = '0px', top = '0px', z] = state.base ?? [];
     el.style.translate = `${addTranslation(left, state.x)} ${addTranslation(top, state.y)}${z ? ` ${z}` : ''}`;
+    state.rendered = el.style.translate;
   };
   const stop = () => {
     release++;
@@ -264,7 +265,12 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const e = event as PointerEvent;
     if (pointerId !== undefined) return;
     stop();
-    state.base ??= readTranslation(el);
+    const current = parseTranslation(typeof getComputedStyle === 'undefined' ? el.style.translate : getComputedStyle(el).translate);
+    if (state.rendered === undefined || !matchesTranslation(current, parseTranslation(state.rendered))) {
+      state.base = current;
+      state.rendered = undefined;
+      state.x = state.y = 0;
+    }
     pointerId = e.pointerId;
     for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
       axis.from = state[axis.key];
@@ -348,9 +354,14 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   };
 }
 
-function readTranslation(el: Element): string[] {
-  if (typeof getComputedStyle === 'undefined') return [];
-  const value = getComputedStyle(el).translate;
+function matchesTranslation(current: string[], rendered: string[]): boolean {
+  return [0, 1, 2].every(i => {
+    const a = current[i] ?? '0px', b = rendered[i] ?? '0px';
+    return a === b || (a.endsWith('px') && b.endsWith('px') && Number(a.slice(0, -2)) === Number(b.slice(0, -2)));
+  });
+}
+
+function parseTranslation(value: string): string[] {
   if (!value || value === 'none') return [];
   const axes: string[] = [];
   let depth = 0, start = 0;
