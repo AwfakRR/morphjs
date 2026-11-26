@@ -1,16 +1,15 @@
 import { writable, type Writable } from 'svelte/store';
-import { animate, type MorphSpringOptions } from 'morphjs';
+import { animate, type MorphControls, type MorphSpringOptions } from 'morphjs';
 
 export interface MorphSpringStore extends Writable<number> {
   set: (value: number) => void;
 }
 
 /**
- * A Svelte readable store that smoothly springs to its target value.
+ * A Svelte writable store with an animated set() and an immediate update().
  * 
  * @param initialValue - Starting value
  * @param springOptions - MorphJS spring configuration
- * @returns Svelte store with .set() that animates
  */
 export function springStore(
   initialValue: number = 0,
@@ -18,32 +17,45 @@ export function springStore(
 ): MorphSpringStore {
   const store = writable<number>(initialValue);
   let currentValue = initialValue;
-  let currentAnim: any = null;
-  const proxy = { val: initialValue };
+  let currentAnimation: { controls?: MorphControls } | undefined;
+
+  const publish = (value: number) => {
+    currentValue = value;
+    store.set(value);
+  };
+
+  const cancelAnimation = () => {
+    const animation = currentAnimation;
+    currentAnimation = undefined;
+    animation?.controls?.cancel();
+  };
 
   return {
     subscribe: store.subscribe,
-    update: store.update,
+    update: (updater) => {
+      const nextValue = updater(currentValue);
+      cancelAnimation();
+      publish(nextValue);
+    },
     set: (nextValue: number) => {
+      cancelAnimation();
       if (typeof window !== 'undefined') {
-        if (currentAnim && typeof currentAnim.cancel === 'function') {
-          currentAnim.cancel();
-        }
-        proxy.val = currentValue;
-        currentAnim = animate(
+        const proxy = { val: currentValue };
+        const animation: { controls?: MorphControls } = {};
+        currentAnimation = animation;
+        animation.controls = animate(
           proxy as any,
           { val: nextValue },
           {
             spring: springOptions ?? true,
             onUpdate: () => {
-              currentValue = proxy.val;
-              store.set(currentValue);
+              if (currentAnimation === animation) publish(proxy.val);
             }
           }
         );
+        if (currentAnimation !== animation) animation.controls.cancel();
       } else {
-        currentValue = nextValue;
-        store.set(nextValue);
+        publish(nextValue);
       }
     }
   };
