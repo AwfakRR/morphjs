@@ -174,3 +174,15 @@ it('keeps an autoplay timeline paused between Motion scroll updates', async () =
     scope.revert();
   }
 });
+
+it('cancels a Motion tween only once when its scroll link belongs to the same scope', async () => {
+  makeScroller();
+  const scope = createScope();
+  const onCancel = vi.fn();
+  const tween = scope.animate({ value: 0 } as unknown as MorphTargets, { value: [0, 100] }, { onCancel });
+  scope.scroll(tween);
+  await vi.advanceTimersByTimeAsync(48);
+
+  scope.revert();
+  expect(onCancel).toHaveBeenCalledOnce();
+});

@@ -1,6 +1,6 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
 import { toMotionEasing } from '../easing/easing';
-import { notifyControlsCanceled } from '../utils/controls';
+import { notifyControlsCanceled, onControlsCancel } from '../utils/controls';
 import { seekControlsProgress } from '../utils/deferred-controls';
 import { resolveTargets } from '../utils/targets';
 
@@ -277,10 +277,19 @@ export const motionAdapter: IAnimationAdapter = {
       options as Parameters<typeof motion.scroll>[1]
     );
     const controls: MorphControls = Object.create(animation);
-    controls.cancel = () => {
+    let tracking = true;
+    const stopTracking = () => {
+      if (!tracking) return;
+      tracking = false;
+      unsubscribe();
       stop?.();
-      animation.cancel();
       notifyControlsCanceled(controls);
+    };
+    const unsubscribe = onControlsCancel(animation, stopTracking);
+    controls.cancel = () => {
+      if (!tracking) return;
+      stopTracking();
+      animation.cancel();
     };
     return controls;
   },
