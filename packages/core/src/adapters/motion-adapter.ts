@@ -108,12 +108,12 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
         legacyEnds?.delete(track);
         const driver = driverOf(track);
         if (track.speed < 0 && isJs(driver)) {
-          // Cancel samples time zero; a finished track would otherwise commit the new direction's endpoint.
-          if (driver.state === 'finished') track.pause();
+          // Rewound tracks are already settled. Cancel would sample a different keyframe.
+          if (driver.state === 'finished') continue;
           track.speed *= -1;
         }
+        track.cancel();
       }
-      motionAnimation.cancel();
       notifyControlsCanceled(controls);
     },
     finish: () => motionAnimation.finish(),

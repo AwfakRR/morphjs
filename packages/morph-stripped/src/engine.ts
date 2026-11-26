@@ -111,12 +111,12 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
         legacyEnds?.delete(track);
         const driver = driverOf(track);
         if (track.speed < 0 && isJs(driver)) {
-          // Cancel samples time zero; a finished track would otherwise commit the new direction's endpoint.
-          if (driver.state === 'finished') track.pause();
+          // Rewound tracks are already settled. Cancel would sample a different keyframe.
+          if (driver.state === 'finished') continue;
           track.speed *= -1;
         }
+        track.cancel?.();
       }
-      anim.cancel?.();
     },
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => {

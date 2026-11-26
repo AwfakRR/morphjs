@@ -149,13 +149,13 @@ it('preserves the unelapsed part of the initial Motion delay when paused', async
   }
 });
 
-it('keeps the first keyframe when canceling after a completed rewind', async () => {
+it.each([0.25, -0.15])('keeps the first keyframe when canceling after a completed rewind (delay %s)', async delay => {
   const target = { value: 0 };
   const onComplete = vi.fn();
   const controls = animate(target as any, { value: [0, 100] }, {
-    engine: 'motion', duration: 1, delay: 0.25, ease: 'linear', onComplete,
+    engine: 'motion', duration: 1, delay, ease: 'linear', onComplete,
   });
-  await vi.advanceTimersByTimeAsync(800);
+  await vi.advanceTimersByTimeAsync(500 + delay * 1000);
   expect(target.value).toBeGreaterThan(45);
 
   controls.reverse();
