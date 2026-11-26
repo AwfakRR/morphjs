@@ -240,6 +240,43 @@ it.each(['seek', 'reverse'])('tracks a finished Anime tween after %s and restart
   }
 });
 
+it('exposes the next Anime completion when onComplete restarts the tween', async () => {
+  const scope = createScope();
+  const replayCompleted = vi.fn();
+  let replay: Promise<void> | undefined;
+  const tween = scope.animate({ value: 0 } as unknown as MorphTargets, { value: 100 }, {
+    engine: 'anime',
+    duration: 0.4,
+    onComplete: () => {
+      if (replay) return;
+      tween.restart();
+      replay = tween.finished;
+      void replay.then(replayCompleted);
+    },
+  });
+  const first = tween.finished;
+  const firstCompleted = vi.fn();
+  void first.then(firstCompleted);
+
+  try {
+    tween.finish();
+    await vi.advanceTimersByTimeAsync(80);
+    expect(firstCompleted).toHaveBeenCalledOnce();
+    expect(replay).not.toBe(first);
+    expect(tween.finished).toBe(replay);
+    expect(replayCompleted).not.toHaveBeenCalled();
+    scope.add(tween);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(scope.size).toBe(1);
+    await vi.advanceTimersByTimeAsync(480);
+    expect(replayCompleted).toHaveBeenCalledOnce();
+    expect(scope.size).toBe(0);
+  } finally {
+    scope.revert();
+    tween.cancel();
+  }
+});
+
 it.each(['anime', 'gsap'])('finishes a %s timeline paused before its initial autoplay', async engine => {
   const scope = createScope();
   const target = { value: 0 };
