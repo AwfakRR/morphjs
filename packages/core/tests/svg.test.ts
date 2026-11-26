@@ -97,6 +97,19 @@ describe('core SVG helpers', () => {
     });
   });
 
+  it('starts GSAP morph and attribute pairs at the last value for alternate-reverse', async () => {
+    await gsapAdapter.ensure!();
+    const d = ['M0 0 L10 0', 'M0 0 L10 10'];
+    svg.attr(path, { d, r: [10, 50] }, { adapter: 'gsap', direction: 'alternate-reverse', repeat: 1 });
+
+    expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: d[1], r: 50 } }, {
+      morphSVG: { shape: d[0] },
+      attr: { r: 10 },
+      repeat: 1,
+      yoyo: true,
+    });
+  });
+
   it('draws with Anime by default and keeps the same route after lazy loading', async () => {
     const controls = createNoopControls();
     const pause = vi.spyOn(controls, 'pause');

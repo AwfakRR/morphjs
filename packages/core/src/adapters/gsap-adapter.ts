@@ -253,12 +253,12 @@ export const gsapAdapter: IAnimationAdapter = {
     const to = toGsapVars({}, options);
     const fromAttrs: Record<string, any> = {};
     const toAttrs: Record<string, any> = {};
+    const reversed = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
 
     for (const [name, value] of Object.entries(properties)) {
-      const [start, end] = Array.isArray(value) && value.length === 2 ? value : [undefined, value];
+      let [start, end] = Array.isArray(value) && value.length === 2 ? value : [undefined, value];
       if (name === 'strokeDashoffset') {
         if (DrawSVGPlugin && start !== undefined) {
-          const reversed = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
           from.drawSVG = reversed ? '100%' : '0%';
           to.drawSVG = reversed ? '0%' : '100%';
         } else {
@@ -266,6 +266,7 @@ export const gsapAdapter: IAnimationAdapter = {
           to.strokeDashoffset = end;
         }
       } else {
+        if (reversed && start !== undefined) [start, end] = [end, start];
         if (start !== undefined) fromAttrs[name] = start;
         if (name === 'd' && MorphSVGPlugin) {
           to.morphSVG = { shape: end };
