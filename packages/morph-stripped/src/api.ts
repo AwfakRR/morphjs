@@ -56,6 +56,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const seq: Array<() => void> = [];
   let realTl: any = null;
   let activeEngine: 'g' | 'a' = opt?.engine === 'gsap' ? 'g' : 'a';
+  let autoplay = opt?.autoplay !== false;
   let pending: Promise<void> | undefined;
 
   const enqueue = (run: () => void, load?: Promise<unknown> | false) => {
@@ -198,6 +199,13 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     pause() {
       step(() => enqueue(deferred.pause));
     },
+    cancel() {
+      autoplay = false;
+      step(() => enqueue(() => {
+        deferred.pause();
+        deferred.cancel();
+      }));
+    },
     get playState() { return deferred.playState; },
     get duration() {
       if (!realTl) return 0;
@@ -214,8 +222,8 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   };
 
   timelines.set(tlo, state);
-  if (opt?.autoplay !== false) {
-    Promise.resolve().then(() => { if (!state.parent) tlo.play(); });
+  if (autoplay) {
+    Promise.resolve().then(() => { if (autoplay && !state.parent) tlo.play(); });
   }
   return tlo;
 }

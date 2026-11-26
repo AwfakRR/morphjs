@@ -171,3 +171,25 @@ it('includes pending additions when nesting a previously initialized timeline', 
     parent.cancel();
   }
 });
+
+it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as const)('does not resume a %s parent cancelled while adding a child (autoplay: %s)', async (engine, autoplay) => {
+  const target = { x: 0 };
+  const parent = timeline({ engine, autoplay })
+    .label('intro', 0.5)
+    .add(target as any, { x: 100, duration: 2, ease: 'linear' });
+  if (!autoplay) await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2));
+
+  const child = timeline({ engine, autoplay: false }).add({ y: 0 } as any, { y: 1, duration: 1 });
+  try {
+    parent.add(child);
+    parent.play('intro');
+    parent.cancel();
+    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(3));
+    expect(parent.playState).not.toBe('running');
+    const stoppedAt = parent.currentTime;
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(parent.currentTime).toBe(stoppedAt);
+  } finally {
+    parent.cancel();
+  }
+});
