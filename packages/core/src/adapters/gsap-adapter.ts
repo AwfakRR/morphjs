@@ -266,14 +266,20 @@ export const gsapAdapter: IAnimationAdapter = {
       }
     }
     const horizontal = options?.axis === 'x';
+    const leadingEdge = horizontal ? 'left' : 'top';
+    const pinEnd = () => {
+      const scroller = options?.container ?? root;
+      const size = horizontal ? scroller?.clientWidth : scroller?.clientHeight;
+      return `clamp(${leadingEdge}+=${size ?? 0}px ${leadingEdge})`;
+    };
     const [start, end] = options?.offset ?? [];
     const vars = {
       trigger: triggerTarget,
       scroller: options?.container,
       horizontal,
-      start: start === undefined ? (horizontal ? 'left left' : 'top top') : toScrollTriggerOffset(start, horizontal),
+      start: start === undefined ? `${leadingEdge} ${leadingEdge}` : toScrollTriggerOffset(start, horizontal),
       end: end === undefined
-        ? (pin ? '+=100%' : horizontal ? 'right right' : 'bottom bottom')
+        ? (pin ? pinEnd : horizontal ? 'right right' : 'bottom bottom')
         : toScrollTriggerOffset(end, horizontal),
       pin,
     };

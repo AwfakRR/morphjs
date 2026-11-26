@@ -14,7 +14,7 @@ vi.mock('motion', () => ({ scroll: motionScroll }));
 
 describe('core scroll routing', () => {
   const root = { clientWidth: 1200, clientHeight: 800 } as Element;
-  const container = {} as Element;
+  const container = { clientHeight: 600 } as Element;
   const target = { parentNode: container } as unknown as Element;
 
   beforeEach(() => {
@@ -155,13 +155,15 @@ describe('core scroll routing', () => {
     expect(kill).toHaveBeenCalled();
   });
 
-  it('uses a positive default pin range for a short target', async () => {
+  it('lets GSAP clamp the default pin range for a short final target', async () => {
     const shortTarget = { parentNode: container, clientHeight: 100 } as unknown as Element;
     create.mockReturnValue({ kill: vi.fn() });
     await scroll(vi.fn(), { target: shortTarget, container, pin: true }).finished;
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      trigger: shortTarget, pin: true, start: 'top top', end: '+=100%',
+      trigger: shortTarget, pin: true, start: 'top top', end: expect.any(Function),
     }));
+    const [{ end }] = create.mock.lastCall!;
+    expect(end()).toBe('clamp(top+=600px top)');
   });
 
   it.each([
