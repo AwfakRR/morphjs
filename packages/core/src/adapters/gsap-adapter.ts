@@ -249,23 +249,35 @@ export const gsapAdapter: IAnimationAdapter = {
     options?: MorphSvgOptions
   ): MorphControls {
     const { gsap, MorphSVGPlugin, DrawSVGPlugin } = getGsapSync();
-    const vars = toGsapVars({}, options);
+    const from: Record<string, any> = {};
+    const to = toGsapVars({}, options);
+    const fromAttrs: Record<string, any> = {};
+    const toAttrs: Record<string, any> = {};
+    const reversed = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
 
-    // SVG morph: use MorphSVGPlugin if available
-    if (properties.d && MorphSVGPlugin) {
-      const toPath = Array.isArray(properties.d) ? properties.d[1] : properties.d;
-      vars.morphSVG = { shape: toPath };
-      return wrapGsapControls(gsap.to(targets, vars));
+    for (const [name, value] of Object.entries(properties)) {
+      let [start, end] = Array.isArray(value) && value.length === 2 ? value : [undefined, value];
+      if (name === 'strokeDashoffset') {
+        if (DrawSVGPlugin && start !== undefined) {
+          from.drawSVG = reversed ? '100%' : '0%';
+          to.drawSVG = reversed ? '0%' : '100%';
+        } else {
+          if (start !== undefined) from.strokeDashoffset = start;
+          to.strokeDashoffset = end;
+        }
+      } else {
+        if (reversed && start !== undefined) [start, end] = [end, start];
+        if (start !== undefined) fromAttrs[name] = start;
+        if (name === 'd' && MorphSVGPlugin) {
+          to.morphSVG = { shape: end };
+        } else {
+          toAttrs[name] = end;
+        }
+      }
     }
 
-    // SVG draw: use DrawSVGPlugin if available
-    if (properties.strokeDashoffset !== undefined && DrawSVGPlugin) {
-      vars.drawSVG = '100%';
-      return wrapGsapControls(gsap.from(targets, { drawSVG: 0, ...vars }));
-    }
-
-    // SVG attributes: use GSAP's built-in attr plugin
-    vars.attr = properties;
-    return wrapGsapControls(gsap.to(targets, vars));
+    if (Object.keys(fromAttrs).length) from.attr = fromAttrs;
+    if (Object.keys(toAttrs).length) to.attr = toAttrs;
+    return wrapGsapControls(Object.keys(from).length ? gsap.fromTo(targets, from, to) : gsap.to(targets, to));
   },
 };
