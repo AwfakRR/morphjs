@@ -162,3 +162,39 @@ it('reverses each track from its own position after another track finishes', asy
     controls.cancel();
   }
 });
+
+it.each(['play', 'reverse'] as const)('keeps a finished delayed track at its endpoint before %s', async (resume) => {
+  await vi.advanceTimersByTimeAsync(3000);
+  const target = { short: 0, long: 0 };
+  const controls = animate(target as any, { short: [0, 100], long: [0, 100] }, {
+    engine: 'motion', duration: 2, delay: 0.5, ease: 'linear',
+    short: { duration: 1, delay: 0.5, ease: 'linear' },
+  });
+  try {
+    await vi.advanceTimersByTimeAsync(1728);
+    expect(target.short).toBe(100);
+    expect(target.long).toBeGreaterThan(50);
+    expect(target.long).toBeLessThan(65);
+
+    controls.pause();
+    await vi.advanceTimersByTimeAsync(128);
+    const paused = target.long;
+    expect(target.short).toBe(100);
+    expect(controls.currentTime).toBeGreaterThanOrEqual(1);
+    expect(controls.currentTime).toBeLessThan(1.016);
+
+    controls[resume]();
+    await vi.advanceTimersByTimeAsync(160);
+
+    if (resume === 'reverse') {
+      expect(target.short).toBeGreaterThan(80);
+      expect(target.short).toBeLessThan(87);
+      expect(target.long).toBeLessThan(paused - 6);
+    } else {
+      expect(target.short).toBe(100);
+      expect(target.long).toBeGreaterThan(paused + 6);
+    }
+  } finally {
+    controls.cancel();
+  }
+});

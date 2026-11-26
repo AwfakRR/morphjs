@@ -69,8 +69,10 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
     }
   };
   const playMotion = (backward = false) => {
+    const resuming = !backward && tracks.some((track: any) => track.state === 'paused');
     for (const track of tracks) {
       const { speed, state } = track;
+      if (resuming && state === 'finished') continue;
       const driver = driverOf(track);
       const delay = delayOf(driver);
       const time = legacyEnds?.get(track) ?? readTime(track, driver, delay);
@@ -90,6 +92,7 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
       if (!isM) return anim.pause?.();
       for (const track of tracks) {
         const driver = driverOf(track);
+        if (driver.state === 'paused' || driver.state === 'finished') continue;
         // Motion 11 pauses on sampled time. Keep the raw clock, including any remaining delay.
         const rawTime = delayOf(driver) && !driver.updateTime && driver.state === 'running' &&
           driver.driver && driver.startTime != null
