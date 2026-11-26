@@ -220,121 +220,128 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     return true;
   };
 
+  const addChild = (childTimeline: MorphTimeline, position?: Position) => {
+    const child = timelines.get(childTimeline);
+    if (!child || child.parent || child.reservedBy) throw new TypeError('Expected an unattached morph-stripped timeline');
+    for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent ?? ancestor.reservedBy) {
+      if (ancestor === child) throw new TypeError('Cannot nest a timeline inside itself');
+    }
+    const { tl: childTl, engine: childEngine } = child.native();
+    const percentage = typeof position === 'string' && !labelNames.has(position) &&
+      !(realTl && Object.hasOwn(realTl.labels, position)) && /(?:^[<>]|[+-]=).*%\s*$/.test(position);
+    const resolvePlacement = percentage && (!realTl || !childTl);
+    if (resolvePlacement) child.reservedBy = state;
+    else {
+      if (percentage && activeEngine !== childEngine) throw new Error(mixedPercentageError);
+      child.parent = state;
+      child.adopt();
+    }
+    step(() => enqueue(() => {
+      const { tl, engine, anime: animeModule } = child.native();
+      if (resolvePlacement) {
+        child.reservedBy = undefined;
+        if (activeEngine !== engine) {
+          console.error(mixedPercentageError);
+          return;
+        }
+        child.parent = state;
+        child.adopt();
+      }
+      if (activeEngine === 'a' && engine === 'a') {
+        recordAnime((host, current) =>
+          child.mount(host, (current?.start ?? 0) + animeOffset(host, toAnimePosition(position), current), current?.seekParent));
+      } else if (activeEngine === 'g' && engine === 'g') {
+        realTl.add(tl, position);
+        tl.paused(false);
+      } else {
+        if (engine === 'a') {
+          const host = mixedHost ??= animeModule.createTimeline({ autoplay: false });
+          const endpoints = mixedEndpoints ??= new Map();
+          const clock = {
+            get time() { return 0; },
+            set time(_: number) {
+              const time = realTl.time();
+              host.seek(endpoints.get(time) ?? time * 1000);
+            },
+          };
+          const offset = typeof position === 'string' && Object.hasOwn(realTl.labels, position) ? realTl.labels[position] : position;
+          realTl.fromTo(clock, { time: 0 }, { time: 1, duration: 0, ease: 'none', immediateRender: false, lazy: false }, offset);
+          const clockTween = realTl.recent();
+          const start = clockTween.startTime() * 1000;
+          const exactDuration = child.mount(host, start, tlo.seek);
+          clockTween.duration(exactDuration / 1000);
+          const end = roundGsapTime(clockTween.endTime());
+          const exactEnd = start + exactDuration;
+          if (exactEnd > end * 1000) endpoints.set(end, Math.max(endpoints.get(end) ?? 0, exactEnd));
+        } else {
+          childTimeline.pause();
+          const clock = {
+            get time() { return childTimeline.currentTime; },
+            set time(time: number) { childTimeline.seek(time); },
+          };
+          recordAnime((host, current) => host.add(clock,
+            { time: [0, childTimeline.duration], duration: childTimeline.duration * 1000, delay: 0, ease: 'linear' },
+            (current?.start ?? 0) + animeOffset(host, toAnimePosition(position), current)));
+        }
+      }
+    }, child.ready()));
+  };
+
+  const addTween = (targets: MorphTargets, properties: Record<string, unknown>, position?: Position) => {
+    step(() => {
+      if (activeEngine === 'g') {
+        enqueue(() => { realTl.to(targets, toGsapOptions(properties), position); },
+          (properties.scrollTrigger !== undefined || properties.morphSVG !== undefined || properties.drawSVG !== undefined) && loadGsapFor(properties));
+      } else {
+        enqueue(() => {
+          const params = toAnimeOptions(properties, undefined, true);
+          const options: Record<string, any> = { ...realTl.defaults, ...params };
+          const { $, get } = anime.utils;
+          const resolvedTargets = $(targets);
+          let replay: Record<string, any> | undefined;
+          recordAnime((host, current) => {
+            const offset = animeOffset(host, toAnimePosition(position), current);
+            let definition = current ? replay ?? options : params;
+            const { onComplete } = definition;
+            if (current?.seekParent && onComplete) {
+              definition = { ...definition, onComplete(this: unknown, animation: unknown) {
+                queueMicrotask(() => onComplete.call(this, animation));
+              } };
+            }
+            if (!current) {
+              replay = { ...options };
+              for (const property of Object.keys(params)) {
+                if (property in realTl.defaults) continue;
+                const starts = new Map<object, any>();
+                for (const target of resolvedTargets) {
+                  let first = firstProperties.get(target);
+                  if (!first) firstProperties.set(target, first = new Map());
+                  if (!first.has(property) || offset < first.get(property)!) {
+                    first.set(property, offset);
+                    starts.set(target, get(target, property));
+                  }
+                }
+                if (starts.size) replay[property] = withAnimeStart(params[property], target => starts.get(target));
+              }
+            }
+            host.add(current ? resolvedTargets : targets, definition, (current?.start ?? 0) + offset);
+          });
+        });
+      }
+    });
+  };
+
   const tlo: MorphTimeline = {
     ...deferred,
     get finished() {
       return pending ? state.ready().then(() => deferred.finished) : deferred.finished;
     },
     then: (resolve, reject) => tlo.finished.then(resolve, reject),
-    add(t: MorphTargets | MorphTimeline, p?: Record<string, any> | Position, o?: Position) {
-      if (typeof p !== 'object') {
-        const child = timelines.get(t as MorphTimeline);
-        if (!child || child.parent || child.reservedBy) throw new TypeError('Expected an unattached morph-stripped timeline');
-        for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent ?? ancestor.reservedBy) {
-          if (ancestor === child) throw new TypeError('Cannot nest a timeline inside itself');
-        }
-        const { tl: childTl, engine: childEngine } = child.native();
-        const percentage = typeof p === 'string' && !labelNames.has(p) &&
-          !(realTl && Object.hasOwn(realTl.labels, p)) && /(?:^[<>]|[+-]=).*%\s*$/.test(p);
-        const resolvePlacement = percentage && (!realTl || !childTl);
-        if (resolvePlacement) child.reservedBy = state;
-        else {
-          if (percentage && activeEngine !== childEngine) throw new Error(mixedPercentageError);
-          child.parent = state;
-          child.adopt();
-        }
-        step(() => enqueue(() => {
-          const { tl, engine, anime: animeModule } = child.native();
-          if (resolvePlacement) {
-            child.reservedBy = undefined;
-            if (activeEngine !== engine) {
-              console.error(mixedPercentageError);
-              return;
-            }
-            child.parent = state;
-            child.adopt();
-          }
-          if (activeEngine === 'a' && engine === 'a') {
-            recordAnime((host, current) =>
-              child.mount(host, (current?.start ?? 0) + animeOffset(host, toAnimePosition(p), current), current?.seekParent));
-          } else if (activeEngine === 'g' && engine === 'g') {
-            realTl.add(tl, p);
-            tl.paused(false);
-          } else {
-            const controls = t as MorphTimeline;
-            if (engine === 'a') {
-              const host = mixedHost ??= animeModule.createTimeline({ autoplay: false });
-              const endpoints = mixedEndpoints ??= new Map();
-              const clock = {
-                get time() { return 0; },
-                set time(_: number) {
-                  const time = realTl.time();
-                  host.seek(endpoints.get(time) ?? time * 1000);
-                },
-              };
-              const offset = typeof p === 'string' && Object.hasOwn(realTl.labels, p) ? realTl.labels[p] : p;
-              realTl.fromTo(clock, { time: 0 }, { time: 1, duration: 0, ease: 'none', immediateRender: false, lazy: false }, offset);
-              const clockTween = realTl.recent();
-              const start = clockTween.startTime() * 1000;
-              const exactDuration = child.mount(host, start, tlo.seek);
-              clockTween.duration(exactDuration / 1000);
-              const end = roundGsapTime(clockTween.endTime());
-              const exactEnd = start + exactDuration;
-              if (exactEnd > end * 1000) endpoints.set(end, Math.max(endpoints.get(end) ?? 0, exactEnd));
-            } else {
-              controls.pause();
-              const clock = {
-                get time() { return controls.currentTime; },
-                set time(time: number) { controls.seek(time); },
-              };
-              recordAnime((host, current) => host.add(clock,
-                { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' },
-                (current?.start ?? 0) + animeOffset(host, toAnimePosition(p), current)));
-            }
-          }
-        }, child.ready()));
+    add(target: MorphTargets | MorphTimeline, propertiesOrPosition?: Record<string, any> | Position, position?: Position) {
+      if (typeof propertiesOrPosition === 'object') {
+        addTween(target as MorphTargets, propertiesOrPosition, position);
       } else {
-        step(() => {
-          if (activeEngine === 'g') {
-            enqueue(() => { realTl.to(t, toGsapOptions(p), o); },
-              (p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) && loadGsapFor(p));
-          } else {
-            enqueue(() => {
-              const params = toAnimeOptions(p, undefined, true);
-              const options: Record<string, any> = { ...realTl.defaults, ...params };
-              const { $, get } = anime.utils;
-              const targets = $(t);
-              let replay: Record<string, any> | undefined;
-              recordAnime((host, current) => {
-                const offset = animeOffset(host, toAnimePosition(o), current);
-                let definition = current ? replay ?? options : params;
-                const { onComplete } = definition;
-                if (current?.seekParent && onComplete) {
-                  definition = { ...definition, onComplete(this: unknown, animation: unknown) {
-                    queueMicrotask(() => onComplete.call(this, animation));
-                  } };
-                }
-                if (!current) {
-                  replay = { ...options };
-                  for (const property of Object.keys(params)) {
-                    if (property in realTl.defaults) continue;
-                    const starts = new Map<object, any>();
-                    for (const target of targets) {
-                      let first = firstProperties.get(target);
-                      if (!first) firstProperties.set(target, first = new Map());
-                      if (!first.has(property) || offset < first.get(property)!) {
-                        first.set(property, offset);
-                        starts.set(target, get(target, property));
-                      }
-                    }
-                    if (starts.size) replay[property] = withAnimeStart(params[property], target => starts.get(target));
-                  }
-                }
-                host.add(current ? targets : t, definition, (current?.start ?? 0) + offset);
-              });
-            });
-          }
-        });
+        addChild(target as MorphTimeline, propertiesOrPosition);
       }
       return tlo;
     },
