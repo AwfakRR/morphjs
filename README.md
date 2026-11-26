@@ -134,6 +134,25 @@ Scopes also track `spring`, `timeline`, `scroll`, and `svg` calls. Use `scope.ad
 - **Vue:** Call `useMorph()` in setup to get animation methods that clean up on unmount.
 - **Svelte:** Call `morphScope()` during component initialization to revert the scope on destroy.
 
+### Nested timelines and labels in `morph-stripped`
+
+```ts
+const reveal = timeline({ autoplay: false })
+  .add('.card', { opacity: [0, 1], duration: 1 });
+
+const sequence = timeline({ autoplay: false })
+  .label('intro', 0.5) // addLabel() is an alias
+  .add(reveal, 'intro+=0.25');
+
+sequence.seek('intro+=0.75'); // 1.25 s on the parent, halfway through reveal
+// sequence.play('intro'); // start playing from the label
+```
+
+Numeric positions and label offsets are in seconds. The parent drives a nested
+timeline's playhead; a child can be attached to only one parent. Build the
+child before adding it, and define labels on the timeline that uses them.
+Nesting and labels work with the default Anime.js engine and with `engine: 'gsap'`.
+
 ---
 
 ## 🏗️ Architecture: Balanced & Agnostic
@@ -153,7 +172,8 @@ No single engine dominates. MorphJS automatically routes each animation to the e
       └────────────┘   └────────────┘   └────────────┘
       • Springs        • Default TL     • ScrollTrigger (pin/scrub)
       • Gestures       • SVG Draw/Attr  • MorphSVG (mismatched points)
-      • CSS Tweens     • Staggers       • Pro Nested Timelines
+      • CSS Tweens     • Staggering     • Nested Timelines
+                       • Nested Timelines
       • Basic Scroll   • 100% MIT       • Opt-in ({ engine: 'gsap' })
 ```
 

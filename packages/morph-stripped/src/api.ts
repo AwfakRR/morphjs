@@ -44,74 +44,155 @@ async function loadGsapFor(...props: Record<string, any>[]) {
   return gsap;
 }
 
+type Position = string | number;
+type TimelineState = {
+  ready: () => Promise<void>;
+  native: () => { tl: any; engine: 'g' | 'a' };
+  parent?: TimelineState;
+};
+const timelines = new WeakMap<MorphTimeline, TimelineState>();
+
 export function timeline(opt?: TimelineOptions): MorphTimeline {
-  const seq: Array<{ t: any; p: any; o?: string | number }> = [];
+  const seq: Array<{ run: () => void; props?: Record<string, any> }> = [];
   let realTl: any = null;
   const useGsap = opt?.engine === 'gsap';
   let activeEngine: 'g' | 'a' = useGsap ? 'g' : 'a';
-  let pendingGsapAdd: Promise<void> | undefined;
+  let pending: Promise<void> | undefined;
 
-  const buildAnime = (anime: any) => {
-    const tl = anime.createTimeline({
-      autoplay: opt?.autoplay ?? true,
-      defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
-    });
-    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p, undefined, true), toAnimePosition(s.o)));
-    realTl = tl;
-    const controls = wrap(tl, 'a');
-    controls.seek = (time) => tl.seek(tl.reversed ? tl.duration - time * 1000 : time * 1000);
+  const enqueue = (run: () => void, load?: Promise<unknown> | false) => {
+    if (!pending && !load) {
+      run();
+      return;
+    }
+    const next = Promise.all([pending, load]).then(run);
+    pending = next;
+    void next.then(() => { if (pending === next) pending = undefined; }, () => {});
+  };
+
+  const step = (run: () => void, props?: Record<string, any>) => {
+    if (!realTl) seq.push({ run, props });
+    else run();
+  };
+  const loadGsapTimeline = () => loadGsapFor(...seq.flatMap(s => s.props ? [s.props] : []));
+  const loadEngine = useGsap
+    ? () => loadGsapTimeline().catch(() => { activeEngine = 'a'; return loadAnime(); })
+    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsapTimeline(); });
+
+  const ready = Promise.resolve().then(loadEngine).then((m: any) => {
+    if (activeEngine === 'g') {
+      const d: Record<string, any> = {};
+      if (opt?.defaults?.duration !== undefined) d.duration = opt.defaults.duration;
+      if (opt?.defaults?.ease !== undefined) d.ease = opt.defaults.ease;
+      realTl = m.gsap.timeline({
+        paused: true,
+        defaults: Object.keys(d).length ? toGsapOptions(d) : undefined,
+      });
+    } else {
+      realTl = m.createTimeline({
+        autoplay: false,
+        defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
+      });
+    }
+    seq.splice(0).forEach(s => s.run());
+    return pending;
+  });
+  const state: TimelineState = {
+    ready: () => ready.then(() => pending),
+    native: () => ({ tl: realTl, engine: activeEngine }),
+  };
+
+  const deferred = createDeferred(() => ready, () => {
+    const controls = wrap(realTl, activeEngine);
+    if (activeEngine === 'a') {
+      controls.seek = (time) => realTl.seek(realTl.reversed ? realTl.duration - time * 1000 : time * 1000);
+    }
     return controls;
+  });
+
+  const seek = (position: Position) => {
+    if (typeof position === 'number') {
+      deferred.seek?.(position);
+      return true;
+    }
+    const labels = realTl.labels;
+    const relative = /^(.+)([+-])=([^=]+)$/.exec(position);
+    const name = Object.hasOwn(labels, position) ? position : relative?.[1];
+    if (name === undefined || !Object.hasOwn(labels, name)) return false;
+    const offset = name === position ? 0 : Number(relative![3]) * (relative![2] === '-' ? -1 : 1);
+    if (!Number.isFinite(offset)) return false;
+    deferred.seek?.(labels[name] / (activeEngine === 'a' ? 1000 : 1) + offset);
+    return true;
   };
-
-  const buildGsap = ({ gsap }: any) => {
-    const d: any = {};
-    if (opt?.defaults?.duration !== undefined) d.duration = opt.defaults.duration;
-    if (opt?.defaults?.ease !== undefined) d.ease = opt.defaults.ease;
-    const tl = gsap.timeline({
-      paused: opt?.autoplay === false,
-      defaults: Object.keys(d).length ? toGsapOptions(d) : undefined,
-    });
-    seq.forEach(s => tl.to(s.t, toGsapOptions(s.p), s.o));
-    realTl = tl;
-    return wrap(tl, 'g');
-  };
-
-  const ld = useGsap
-    ? () => loadGsapFor(...seq.map(s => s.p)).catch(() => { activeEngine = 'a'; return loadAnime(); })
-    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsapFor(...seq.map(s => s.p)); });
-
-  const deferred = createDeferred(
-    () => Promise.resolve().then(ld),
-    (m) => activeEngine === 'g' ? buildGsap(m) : buildAnime(m),
-  );
 
   const tlo: MorphTimeline = {
     ...deferred,
-    add(t: any, p: any, o?: string | number) {
-      if (realTl) {
-        if (activeEngine === 'g') {
-          const add = () => { realTl.to(t, toGsapOptions(p), o); };
-          if (pendingGsapAdd || p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) {
-            const next = Promise.all([pendingGsapAdd, loadGsapFor(p)]).then(add);
-            pendingGsapAdd = next;
-            void next.then(() => { if (pendingGsapAdd === next) pendingGsapAdd = undefined; }, () => {});
+    add(t: MorphTargets | MorphTimeline, p?: Record<string, any> | Position, o?: Position) {
+      if (typeof p !== 'object') {
+        const child = timelines.get(t as MorphTimeline);
+        if (!child || child.parent) throw new TypeError('Expected an unattached morph-stripped timeline');
+        for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent) {
+          if (ancestor === child) throw new TypeError('Cannot nest a timeline inside itself');
+        }
+        child.parent = state;
+        step(() => enqueue(() => {
+          const { tl, engine } = child.native();
+          if (activeEngine === 'g' && engine === 'g') {
+            realTl.add(tl, p);
+            tl.paused(false);
+          } else if (activeEngine === 'a' && engine === 'a') {
+            realTl.sync(tl, toAnimePosition(p));
           } else {
-            add();
+            const controls = t as MorphTimeline;
+            controls.pause();
+            const clock = {
+              get time() { return controls.currentTime; },
+              set time(time: number) { controls.seek(time); },
+            };
+            if (activeEngine === 'g') {
+              realTl.fromTo(clock, { time: 0 }, { time: controls.duration, duration: controls.duration, ease: 'none', immediateRender: false }, p);
+            } else {
+              realTl.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, toAnimePosition(p));
+            }
           }
-        } else realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o));
+        }, child.ready()));
       } else {
-        seq.push({ t, p, o });
+        step(() => {
+          if (activeEngine === 'g') {
+            enqueue(() => { realTl.to(t, toGsapOptions(p), o); },
+              (p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) && loadGsapFor(p));
+          } else {
+            enqueue(() => { realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); });
+          }
+        }, p);
       }
       return tlo;
     },
-    label(n: string, o?: any) {
-      if (realTl && activeEngine === 'g') realTl.addLabel(n, o);
+    label(n: string, o?: Position) {
+      step(() => enqueue(() => {
+        if (activeEngine === 'g') realTl.addLabel(n, o);
+        else realTl.label(n, toAnimePosition(o));
+      }));
       return tlo;
     },
-    addPause(o?: any, c?: any) {
-      if (realTl && activeEngine === 'g') realTl.addPause(o, c);
+    addLabel(n: string, o?: Position) {
+      return tlo.label(n, o);
+    },
+    addPause(o?: Position, c?: () => void) {
+      if (realTl && activeEngine === 'g') enqueue(() => { realTl.addPause(o, c); });
       return tlo;
     },
+    seek(position: Position) {
+      step(() => enqueue(() => { seek(position); }));
+    },
+    play(position?: Position) {
+      step(() => enqueue(() => {
+        if (position === undefined || seek(position)) deferred.play();
+      }));
+    },
+    pause() {
+      step(() => enqueue(deferred.pause));
+    },
+    get playState() { return deferred.playState; },
     get duration() {
       if (!realTl) return 0;
       return activeEngine === 'g' ? (realTl.duration?.() ?? 0) : ((realTl.duration ?? 0) / 1000);
@@ -126,8 +207,9 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     },
   };
 
+  timelines.set(tlo, state);
   if (opt?.autoplay !== false) {
-    Promise.resolve().then(() => tlo.play());
+    Promise.resolve().then(() => { if (!state.parent) tlo.play(); });
   }
   return tlo;
 }

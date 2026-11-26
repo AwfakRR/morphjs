@@ -35,3 +35,114 @@ it('uses seconds for Anime segment timing before and after initialization', asyn
   tl.add({ x: 0 }, { x: 100, duration: 0.25, delay: 0.125 });
   expect(tl.duration).toBeCloseTo(1.125, 5);
 });
+
+it.each(['anime', 'gsap'] as const)('uses labels in builder order and playback on %s', async (engine) => {
+  const target = { x: 0 };
+  const tl = timeline({ engine, autoplay: false })
+    .label('intro', 0.25)
+    .add(target as any, { x: 100, duration: 1, ease: 'linear' }, 'intro+=0.25');
+
+  try {
+    tl.seek('intro+=0.75');
+    await vi.waitFor(() => expect(tl.currentTime).toBeCloseTo(1));
+    expect(target.x).toBeCloseTo(50);
+    expect(tl.duration).toBeCloseTo(1.5);
+
+    tl.addLabel('outro', 'intro+=1');
+    tl.play('outro');
+    tl.pause();
+    expect(tl.currentTime).toBeCloseTo(1.25);
+    expect(target.x).toBeCloseTo(75);
+  } finally {
+    tl.cancel();
+  }
+});
+
+it.each(['anime', 'gsap'] as const)('scrubs nested timelines at label-relative offsets on %s', async (engine) => {
+  const target = { x: 0 };
+  const child = timeline({ engine, autoplay: false })
+    .label('start', 0.25)
+    .add(target as any, { x: 100, duration: 1, ease: 'linear' }, 'start');
+  const scene = timeline({ engine, autoplay: false }).add(child, 0.25);
+  const parent = timeline({ engine, autoplay: false })
+    .addLabel('scene', 0.5)
+    .add(scene, 'scene+=0.5')
+    .label('end');
+
+  try {
+    parent.seek('scene+=1.5');
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2));
+    expect(child.currentTime).toBeCloseTo(0.75);
+    expect(target.x).toBeCloseTo(50);
+    expect(parent.duration).toBeCloseTo(2.5);
+
+    parent.seek('end');
+    expect(target.x).toBeCloseTo(100);
+    parent.seek('scene');
+    expect(target.x).toBeCloseTo(0);
+
+    const lateTarget = { x: 0 };
+    const late = timeline({ engine, autoplay: false })
+      .add(lateTarget as any, { x: 100, duration: 1, ease: 'linear' });
+    parent.add(late, 'end').label('tail', '-=0.5');
+    parent.seek('tail');
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(3));
+    expect(lateTarget.x).toBeCloseTo(50);
+    expect(parent.duration).toBeCloseTo(3.5);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('does not let a nested timeline autoplay independently of its paused parent', async () => {
+  const target = { x: 0 };
+  const child = timeline().add(target as any, { x: 100, duration: 1, ease: 'linear' });
+  const parent = timeline({ autoplay: false }).add(child, 1);
+
+  try {
+    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2));
+    expect(child.playState).toBe('paused');
+    expect(target.x).toBe(0);
+    parent.seek(1.5);
+    expect(target.x).toBeCloseTo(50);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it.each([['anime', 'gsap'], ['gsap', 'anime']] as const)('can nest a %s timeline in a %s parent', async (childEngine, engine) => {
+  const target = { x: 0 };
+  const child = timeline({ engine: childEngine, autoplay: false })
+    .add(target as any, { x: 100, duration: 1, ease: 'linear' });
+  const parent = timeline({ engine, autoplay: false }).add(child, 0.5);
+
+  try {
+    parent.seek(1);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1));
+    expect(target.x).toBeCloseTo(50);
+    expect(parent.duration).toBeCloseTo(1.5);
+    parent.seek(0.5);
+    expect(target.x).toBeCloseTo(0);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('includes pending additions when nesting a previously initialized timeline', async () => {
+  const target = { x: 0 };
+  const scene = timeline({ autoplay: false }).add({ x: 0 } as any, { x: 1, duration: 1 });
+  await vi.waitFor(() => expect(scene.duration).toBeCloseTo(1));
+
+  const child = timeline({ autoplay: false }).add(target as any, { x: 100, duration: 1, ease: 'linear' });
+  scene.add(child);
+  const parent = timeline({ autoplay: false }).add(scene, 0.5);
+
+  try {
+    parent.seek(2);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2));
+    expect(parent.duration).toBeCloseTo(2.5);
+    expect(target.x).toBeCloseTo(50);
+  } finally {
+    parent.cancel();
+  }
+});
