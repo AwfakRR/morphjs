@@ -300,7 +300,8 @@ h1 {
   background: var(--bg-input);
   padding: 1rem;
   border-radius: 6px;
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tab-pane.active {

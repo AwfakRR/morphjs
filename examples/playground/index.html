@@ -159,29 +159,73 @@
         <button class="tab-btn" data-target="tab-tanstack">TanStack</button>
       </div>
       <div class="tab-content">
-        <pre id="tab-react" class="tab-pane active"><code>import { useMorph } from 'morphjs/react';
+        <pre id="tab-react" class="tab-pane active"><code>import {
+  useAnimate
+} from '@morphjs/react';
 
 function App() {
-  const ref = useMorph({ x: 100 }, { duration: 0.5 });
-  return &lt;div ref={ref} /&gt;;
+  const [scope, animate] =
+    useAnimate&lt;HTMLDivElement&gt;();
+
+  function move() {
+    animate('button', { x: 100 });
+  }
+
+  return (
+    &lt;div ref={scope}&gt;
+      &lt;button onClick={move}&gt;
+        Move
+      &lt;/button&gt;
+    &lt;/div&gt;
+  );
 }</code></pre>
         <pre id="tab-vue" class="tab-pane"><code>&lt;script setup&gt;
-import { vMorph } from 'morphjs/vue';
+import {
+  vMorph
+} from '@morphjs/vue';
 &lt;/script&gt;
 
 &lt;template&gt;
-  &lt;div v-morph="{ x: 100, duration: 0.5 }"&gt;&lt;/div&gt;
+  &lt;div v-morph="{ x: 100 }"&gt;
+    Box
+  &lt;/div&gt;
 &lt;/template&gt;</code></pre>
         <pre id="tab-svelte" class="tab-pane"><code>&lt;script&gt;
-import { morph } from 'morphjs/svelte';
+import {
+  morphAction
+} from '@morphjs/svelte';
+
+const options = {
+  animate: { x: 100 }
+};
 &lt;/script&gt;
 
-&lt;div use:morph={{ x: 100, duration: 0.5 }}&gt;&lt;/div&gt;</code></pre>
-        <pre id="tab-tanstack" class="tab-pane"><code>import { createMorph } from 'morphjs/tanstack';
+&lt;div use:morphAction={options}&gt;
+  Box
+&lt;/div&gt;</code></pre>
+        <pre id="tab-tanstack" class="tab-pane"><code>import {
+  Outlet
+} from '@tanstack/react-router';
+import {
+  createRouteTransition
+} from '@morphjs/tanstack';
 
-const morph = createMorph();
-// Integration snippet
-</code></pre>
+const { enter } =
+  createRouteTransition();
+
+function onMount(
+  node: HTMLElement | null
+) {
+  if (node) enter(node);
+}
+
+function RouteLayout() {
+  return (
+    &lt;main ref={onMount}&gt;
+      &lt;Outlet /&gt;
+    &lt;/main&gt;
+  );
+}</code></pre>
       </div>
     </section>
 
