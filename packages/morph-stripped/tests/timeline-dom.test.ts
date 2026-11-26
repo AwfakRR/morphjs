@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { expect, it, vi } from 'vitest';
+import { createTimeline, scrambleText } from 'animejs';
 import { timeline } from '../src/index';
 
 it('seeks an Anime child from a stylesheet value when attached before initialization', async () => {
@@ -73,5 +74,36 @@ it('uses the attached target’s measured duration for a nested Anime track', as
   } finally {
     parent.cancel();
     target.remove();
+  }
+});
+
+it('uses the preceding composed tween for a chained text scramble in a nested Anime child', async () => {
+  const expected = 'The longer replacement text';
+  const nativeTarget = document.createElement('span');
+  const target = document.createElement('span');
+  target.textContent = nativeTarget.textContent = 'Short';
+  const first = () => scrambleText({ text: expected, duration: 100 });
+  const second = () => scrambleText({ interval: 20, seed: 42 });
+  const native = createTimeline({ autoplay: false })
+    .add(nativeTarget, { textContent: first() })
+    .add(nativeTarget, { textContent: second() });
+  const chained = vi.fn(second());
+  const child = timeline({ autoplay: false })
+    .add(target, { textContent: first() })
+    .add(target, { textContent: chained });
+  const parent = timeline({ autoplay: false }).add(child, 0.25).label('end');
+
+  try {
+    parent.seek('end');
+    await vi.waitFor(() => expect(parent.currentTime).toBeGreaterThan(0.25));
+    native.seek(native.duration);
+    expect(child.duration).toBeCloseTo(native.duration / 1000);
+    expect(target.textContent).toBe(nativeTarget.textContent);
+    expect(target.textContent).toBe(expected);
+    expect(chained).toHaveBeenCalledTimes(1);
+    expect(chained.mock.calls[0][3]).toBeTruthy();
+  } finally {
+    native.cancel();
+    parent.cancel();
   }
 });

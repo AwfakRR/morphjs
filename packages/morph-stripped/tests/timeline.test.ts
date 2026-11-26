@@ -466,3 +466,33 @@ it('does not inherit the Anime parent delay on the child completion timer', asyn
     parent.cancel();
   }
 });
+
+it('measures nested Anime segments and labels independently of longer host tracks', async () => {
+  const target = { x: 0 };
+  const leaf = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  const child = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 0.5 })
+    .label('start')
+    .add(leaf, 'start+=0.25')
+    .label('end');
+  const parent = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 4 })
+    .label('end')
+    .add(child, 0.5);
+
+  try {
+    parent.seek(1.75);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.75));
+    expect(target.x).toBeCloseTo(50);
+    expect(child.duration).toBeCloseTo(1.75);
+    expect(parent.duration).toBeCloseTo(4);
+    child.seek('end');
+    expect(parent.currentTime).toBeCloseTo(2.25);
+    expect(target.x).toBeCloseTo(100);
+    parent.seek('end');
+    expect(parent.currentTime).toBeCloseTo(4);
+  } finally {
+    parent.cancel();
+  }
+});
