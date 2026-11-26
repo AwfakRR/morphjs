@@ -113,8 +113,29 @@ export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScroll
   if (o?.pin || o?.scrub || o?.engine === 'gsap') {
     return createDeferred(() => loadGsap().catch(() => loadMotion()), (m) => {
       if (m.gsap && m.ScrollTrigger) {
-        if (typeof a === 'function') return mkd(() => m.ScrollTrigger.create({ trigger: o?.target || document.documentElement, scroller: o?.container, start: 'top top', end: 'bottom bottom', pin: o?.pin ?? false, scrub: o?.scrub ?? false, onUpdate: (s: any) => a(s.progress) }).kill());
-        return wrap(m.gsap.to({}, { scrollTrigger: { trigger: o?.target || document.documentElement, scroller: o?.container, pin: o?.pin ?? false, scrub: o?.scrub ?? true, start: 'top top', end: 'bottom bottom' } }), 'g');
+        if (typeof document === 'undefined') return mkd(noop);
+        const vars = {
+          trigger: o?.target || document.documentElement,
+          scroller: o?.container,
+          start: 'top top',
+          end: 'bottom bottom',
+          pin: o?.pin ?? false,
+        };
+        if (typeof a === 'function') {
+          const trigger = m.ScrollTrigger.create({ ...vars, scrub: o?.scrub ?? false, onUpdate: (s: { progress: number }) => a(s.progress) });
+          return mkd(() => trigger.kill());
+        }
+        a.pause();
+        const playhead = { progress: 0 };
+        const animation = m.gsap.to(playhead, {
+          progress: 1,
+          duration: 1,
+          ease: 'none',
+          paused: true,
+          onUpdate: () => a.seek?.(playhead.progress * (a.duration ?? 0)),
+        });
+        m.ScrollTrigger.create({ ...vars, scrub: o?.scrub ?? true, animation });
+        return wrap(animation, 'g');
       }
       const r = m.scroll(a, o);
       return typeof a === 'function' ? mkd(() => { if (typeof r === 'function') r(); }) : a;
