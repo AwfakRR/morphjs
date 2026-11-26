@@ -152,7 +152,7 @@ Numeric positions and label offsets are in seconds. The parent drives a nested
 timeline's playhead; a child can be attached to only one parent. Build the
 child before adding it, and define labels on the timeline that uses them.
 Nesting and labels work with the default Anime.js engine and with `engine: 'gsap'`.
-Under a GSAP parent, wait for the Anime child's duration to be available before using offsets based on it (such as `+=50%`), or use an absolute or label offset.
+Percentage offsets (such as `+=50%`) are only supported within the same engine; for mixed engines use an absolute or label offset (`add()` throws if both engines are known, otherwise `parent.finished` rejects once they resolve).
 
 ---
 

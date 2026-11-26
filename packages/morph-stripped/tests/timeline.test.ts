@@ -513,35 +513,41 @@ it.each([['<<', 0], ['<<+=0.25', 0.25]] as const)('starts a nested Anime segment
   }
 });
 
-it('resolves a GSAP percentage gap from a built Anime child duration', async () => {
-  const target = { x: 0 };
-  const duration = vi.fn(() => 2000);
+const mixedPercentageError = 'Percentage offsets are not supported for mixed-engine children; use an absolute or label offset';
+
+it.each(['-=50%', '+=50%', '>50%'])('throws for %s when both mixed engines are known', async (offset) => {
+  const duration = vi.fn().mockReturnValueOnce(2000).mockReturnValue(1000);
   const child = timeline({ autoplay: false })
-    .add(target, { x: [0, 100], duration, ease: 'linear' });
-  await vi.waitFor(() => expect(child.duration).toBeCloseTo(2));
+    .add({ x: 0 }, { x: 100, duration });
   const parent = timeline({ engine: 'gsap', autoplay: false })
-    .add({ x: 0 }, { x: 100, duration: 1 })
-    .add(child, '+=50%');
+    .add({ x: 0 }, { x: 100, duration: 1 });
 
   try {
-    parent.seek(2.5);
-    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2.5));
-    expect(parent.duration).toBeCloseTo(4);
-    expect(target.x).toBeCloseTo(25);
-    parent.seek(1.5);
-    expect(target.x).toBeCloseTo(0);
+    await vi.waitFor(() => {
+      expect(child.duration).toBeCloseTo(2);
+      expect(parent.duration).toBeCloseTo(1);
+    });
+    expect(() => parent.add(child, offset)).toThrow(mixedPercentageError);
+    expect(parent.duration).toBeCloseTo(1);
+    expect(duration).toHaveBeenCalledTimes(1);
+    parent.add(child, '+=0.25');
+    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2.25));
   } finally {
     parent.cancel();
   }
 });
 
-it('rejects an unbuilt Anime child at a GSAP percentage offset without attaching it', async () => {
-  const child = timeline({ autoplay: false }).add({ x: 0 }, { x: 100, duration: 2 });
-  const parent = timeline({ engine: 'gsap', autoplay: false }).label('start', 0.5);
+it.each(['gsap', 'anime'] as const)('rejects %s parent completion when a queued percentage add resolves to mixed engines', async (engine) => {
+  const child = timeline({ engine: engine === 'gsap' ? 'anime' : 'gsap', autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 2 });
+  const parent = timeline({ engine, autoplay: false }).add({ x: 0 }, { x: 100, duration: 1 });
+  const finished = parent.finished;
   try {
-    expect(() => parent.add(child, '<+=50%')).toThrow(/Build the Anime child.*absolute or label offset/);
-    parent.add(child, 'start+=0.25');
-    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2.75));
+    expect(parent.add(child, '<+=50%')).toBe(parent);
+    await expect(finished).rejects.toThrow(mixedPercentageError);
+    expect(parent.duration).toBeCloseTo(1);
+    parent.add(child, 0.5);
+    await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2.5));
   } finally {
     parent.cancel();
   }
@@ -590,6 +596,24 @@ it('renders a shared Anime child after preview and scrubs backward without dupli
     child.seek(0.25);
     parent.seek(3);
     expect(target.x).toBeCloseTo(100);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('completes a shared Anime child at a rounded-down GSAP endpoint', async () => {
+  const onComplete = vi.fn();
+  const child = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 0.33333334, onComplete });
+  const finished = vi.fn();
+  void child.finished.then(finished);
+  const parent = timeline({ engine: 'gsap', autoplay: false }).add(child, 0);
+
+  try {
+    parent.finish();
+    await vi.waitFor(() => expect(parent.currentTime).toBe(0.3333333));
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
   } finally {
     parent.cancel();
   }

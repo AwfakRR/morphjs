@@ -54,12 +54,13 @@ type AnimeTrack = (host: any, segment?: AnimeSegment) => void;
 type TimelineState = {
   ready: () => Promise<void>;
   native: () => { tl: any; engine: 'g' | 'a'; anime: AnimeModule };
-  initialized: () => boolean;
   adopt: () => void;
   mount: (host: any, start: number, seekParent?: AnimeSegment['seekParent']) => number;
   parent?: TimelineState;
+  reservedBy?: TimelineState;
 };
 const timelines = new WeakMap<MorphTimeline, TimelineState>();
+const mixedPercentageError = 'Percentage offsets are not supported for mixed-engine children; use an absolute or label offset';
 
 function animeOffset(tl: any, position?: Position, segment?: AnimeSegment): number {
   if (segment) {
@@ -167,7 +168,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const state: TimelineState = {
     ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine, anime }),
-    initialized: () => !!realTl && !pending,
     adopt: () => {
       if (realTl && activeEngine === 'a' && !realTl.cancelled) realTl.cancel();
     },
@@ -199,6 +199,9 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     Object.defineProperty(controls, 'finished', { value: animeFinished });
     return controls;
   });
+  let rejectAttachment!: (error: Error) => void;
+  const attachmentFailure = new Promise<never>((_, reject) => { rejectAttachment = reject; });
+  void attachmentFailure.catch(() => {});
 
   const seek = (position: Position) => {
     if (typeof position === 'number') {
@@ -217,25 +220,37 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
 
   const tlo: MorphTimeline = {
     ...deferred,
+    get finished() {
+      return Promise.race([attachmentFailure, state.ready().then(() => deferred.finished)]);
+    },
+    then: (resolve, reject) => tlo.finished.then(resolve, reject),
     add(t: MorphTargets | MorphTimeline, p?: Record<string, any> | Position, o?: Position) {
       if (typeof p !== 'object') {
         const child = timelines.get(t as MorphTimeline);
-        if (!child || child.parent) throw new TypeError('Expected an unattached morph-stripped timeline');
-        for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent) {
+        if (!child || child.parent || child.reservedBy) throw new TypeError('Expected an unattached morph-stripped timeline');
+        for (let ancestor: TimelineState | undefined = state; ancestor; ancestor = ancestor.parent ?? ancestor.reservedBy) {
           if (ancestor === child) throw new TypeError('Cannot nest a timeline inside itself');
         }
         const { tl: childTl, engine: childEngine } = child.native();
-        let duration = 0;
-        if (activeEngine === 'g' && childEngine === 'a' && typeof p === 'string' && /=.*%$/.test(p)) {
-          if (!child.initialized()) {
-            throw new Error('Build the Anime child before adding it at a duration-relative percentage offset, or use an absolute or label offset');
-          }
-          duration = childTl.duration / 1000;
+        const percentage = typeof p === 'string' && /%\s*$/.test(p);
+        const resolvePlacement = percentage && (!realTl || !childTl);
+        if (resolvePlacement) child.reservedBy = state;
+        else {
+          if (percentage && activeEngine !== childEngine) throw new Error(mixedPercentageError);
+          child.parent = state;
+          child.adopt();
         }
-        child.parent = state;
-        child.adopt();
         step(() => enqueue(() => {
           const { tl, engine, anime: animeModule } = child.native();
+          if (resolvePlacement) {
+            child.reservedBy = undefined;
+            if (activeEngine !== engine) {
+              rejectAttachment(new Error(mixedPercentageError));
+              return;
+            }
+            child.parent = state;
+            child.adopt();
+          }
           if (activeEngine === 'a' && engine === 'a') {
             recordAnime((host, current) =>
               child.mount(host, (current?.start ?? 0) + animeOffset(host, toAnimePosition(p), current), current?.seekParent));
@@ -246,13 +261,21 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             const controls = t as MorphTimeline;
             if (engine === 'a') {
               const host = mixedHost ??= animeModule.createTimeline({ autoplay: false });
+              let tween: ReturnType<typeof import('gsap').gsap.to> | undefined;
+              let exactEnd = 0;
               const clock = {
                 get time() { return 0; },
-                set time(_: number) { host.seek(realTl.time() * 1000); },
+                set time(_: number) {
+                  const time = realTl.time() * 1000;
+                  host.seek(tween?.progress() === 1 ? Math.max(time, exactEnd) : time);
+                },
               };
-              realTl.fromTo(clock, { time: 0 }, { time: 1, duration, ease: 'none', immediateRender: false, lazy: false }, p);
-              const tween = realTl.recent();
-              tween.duration(child.mount(host, tween.startTime() * 1000, tlo.seek) / 1000);
+              realTl.fromTo(clock, { time: 0 }, { time: 1, duration: 0, ease: 'none', immediateRender: false, lazy: false }, p);
+              const clockTween = realTl.recent() as NonNullable<typeof tween>;
+              const start = clockTween.startTime() * 1000;
+              const exactDuration = child.mount(host, start, tlo.seek);
+              exactEnd = start + exactDuration;
+              tween = clockTween.duration(exactDuration / 1000);
             } else {
               controls.pause();
               const clock = {
