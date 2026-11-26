@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { scroll } from '../src/index';
 import type { MorphControls } from '../src/types';
 
@@ -15,6 +15,8 @@ afterEach(() => {
 });
 
 describe('stripped GSAP scroll', () => {
+  beforeEach(() => vi.stubGlobal('window', {}));
+
   it('registers progress updates before cancellation and kills the same trigger', async () => {
     const target = {};
     vi.stubGlobal('document', { documentElement: target });
