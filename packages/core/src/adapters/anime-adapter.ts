@@ -173,23 +173,51 @@ export const animeAdapter: IAnimationAdapter = {
     }
 
     const controls = wrapAnimeControls(tl);
+    let suppressPauseMarkers = false;
+    const withoutPauseMarkers = <Args extends unknown[]>(action: (...args: Args) => void) =>
+      (...args: Args) => {
+        const wasSuppressed = suppressPauseMarkers;
+        suppressPauseMarkers = true;
+        try {
+          action(...args);
+        } finally {
+          suppressPauseMarkers = wasSuppressed;
+        }
+      };
 
     // Extend with timeline-specific methods
     return {
       ...controls,
+      seek: withoutPauseMarkers(controls.seek!),
+      cancel: withoutPauseMarkers(controls.cancel),
+      finish: withoutPauseMarkers(controls.finish),
       get duration() {
         return (tl.duration || 0) / 1000;
+      },
+      get progress() {
+        return controls.progress;
+      },
+      get currentTime() {
+        return controls.currentTime;
+      },
+      get playState() {
+        return controls.playState;
       },
       add(addTargets, addProps, offset?) {
         const addOpts = toAnimeOptions(addProps);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
         return this;
       },
-      label(_name, _offset?) {
-        // Anime.js v4 uses offset strings for label-like positioning
+      label(name, offset?) {
+        tl.label(name, toAnimePosition(offset));
         return this;
       },
-      addPause(_offset?, _callback?) {
+      addPause(offset?, callback?) {
+        tl.call(() => {
+          if (suppressPauseMarkers) return;
+          tl.pause();
+          callback?.();
+        }, toAnimePosition(offset));
         return this;
       },
     };

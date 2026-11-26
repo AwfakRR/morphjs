@@ -14,6 +14,7 @@ import { animationEvents } from '../events';
  */
 export function timeline(options?: TimelineOptions): MorphTimeline {
   const segments: TimelineSegment[] = [];
+  const builderSteps: Array<(t: MorphTimeline) => void> = [];
   let realTimeline: MorphTimeline | null = null;
   const pendingActions: Array<(t: MorphTimeline) => void> = [];
 
@@ -25,6 +26,8 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
   });
 
   const initRealTimeline = (rt: MorphTimeline) => {
+    for (const step of builderSteps) step(rt);
+    builderSteps.length = 0;
     realTimeline = rt;
     const id = stateManager.register(rt, 'timeline');
     rt.finished.then(
@@ -89,6 +92,9 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     add(targets: MorphTargets, properties: Record<string, any>, offset?: number | string) {
       if (realTimeline) {
         realTimeline.add(targets, properties, offset);
+      } else if (builderSteps.length > 0) {
+        // Keep tweens after a marker in order with that marker.
+        builderSteps.push((t) => t.add(targets, properties, offset));
       } else {
         segments.push({ targets, properties, offset });
       }
@@ -99,8 +105,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
       if (realTimeline) {
         realTimeline.label(name, offset);
       } else {
-        // Labels are stored as special segments
-        segments.push({ targets: '' as any, properties: { __label: name }, offset });
+        builderSteps.push((t) => t.label(name, offset));
       }
       return tl;
     },
@@ -109,7 +114,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
       if (realTimeline) {
         realTimeline.addPause(offset, callback);
       } else {
-        segments.push({ targets: '' as any, properties: { __pause: true, __callback: callback }, offset });
+        builderSteps.push((t) => t.addPause(offset, callback));
       }
       return tl;
     },
@@ -174,7 +179,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     },
 
     get duration() {
-      if (!realTimeline && segments.length > 0) {
+      if (!realTimeline && (segments.length > 0 || builderSteps.length > 0)) {
         buildRealTimeline();
       }
       return realTimeline ? realTimeline.duration : 0;
@@ -197,4 +202,3 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
   return tl;
 }
-
