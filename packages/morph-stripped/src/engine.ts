@@ -1,34 +1,31 @@
 import type { MorphControls, MorphSpringOptions } from './types';
 
-const load = (fn: () => Promise<any>) => {
-  let p: Promise<any>;
+const load = <T>(fn: () => Promise<T>) => {
+  let p: Promise<T>;
   return () => (p ||= fn());
 };
 
 export const loadMotion = load(() => import('motion').then((m: any) => m.animate ? m : m.default || m));
 export const loadAnime = load(() => import('animejs').then((m: any) => m.animate ? m : m.default || m));
-export const loadGsap = load(() => Promise.all([
-  import('gsap'),
-  import('gsap/ScrollTrigger').catch(() => null as any),
-  import('gsap/MorphSVGPlugin').catch(() => null as any),
-  import('gsap/DrawSVGPlugin').catch(() => null as any)
-]).then(([g, st, msvg, dsvg]) => {
-  const gsap = g.gsap || g.default || g;
-  const plugins = [st?.ScrollTrigger, msvg?.MorphSVGPlugin, dsvg?.DrawSVGPlugin].filter(Boolean);
-  if (plugins.length) gsap.registerPlugin(...plugins);
-  return {
-    gsap,
-    ScrollTrigger: st?.ScrollTrigger || null,
-    MorphSVGPlugin: msvg?.MorphSVGPlugin || null,
-    DrawSVGPlugin: dsvg?.DrawSVGPlugin || null,
-  };
-}));
+export const loadGsapCore = load(() => import('gsap').then(g => ({ gsap: g.gsap || g.default || g })));
 
-if (typeof window !== 'undefined') {
-  loadMotion().catch(() => 0);
-  loadAnime().catch(() => 0);
-  loadGsap().catch(() => 0);
+function loadGsapPlugin<K extends string>(name: K, importer: () => Promise<Record<K, any>>) {
+  return load(async () => {
+    const [{ gsap }, mod] = await Promise.all([loadGsapCore(), importer().catch(() => null)]);
+    const plugin = mod?.[name] ?? null;
+    if (plugin) gsap.registerPlugin(plugin);
+    return { gsap, [name]: plugin } as { gsap: typeof gsap } & Record<K, any>;
+  });
 }
+
+export const loadScrollTrigger = loadGsapPlugin('ScrollTrigger', () => import('gsap/ScrollTrigger'));
+export const loadMorphSVG = loadGsapPlugin('MorphSVGPlugin', () => import('gsap/MorphSVGPlugin'));
+export const loadDrawSVG = loadGsapPlugin('DrawSVGPlugin', () => import('gsap/DrawSVGPlugin'));
+
+export const loadGsap = load(async () => {
+  const [scroll, morph, draw] = await Promise.all([loadScrollTrigger(), loadMorphSVG(), loadDrawSVG()]);
+  return { ...scroll, ...morph, ...draw };
+});
 
 export function wrap(anim: any, type: 'm'|'a'|'g'): MorphControls {
   const isA = type === 'a', isG = type === 'g';
@@ -98,6 +95,14 @@ export function toAnimeOptions(props: Record<string, any>, opt?: any): Record<st
   if (opt.onUpdate) r.onUpdate = (a: any) => opt.onUpdate(a.progress ?? 0);
   if (opt.onComplete) r.onComplete = opt.onComplete;
   return r;
+}
+
+export function toAnimePosition(offset?: string | number): string | number | undefined {
+  if (typeof offset === 'number') return offset * 1000;
+  return offset?.replace(/([+-]=)([^=]+)$/, (position, operator, value) => {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) ? `${operator}${seconds * 1000}` : position;
+  });
 }
 
 const gmap: Record<string, string> = {

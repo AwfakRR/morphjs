@@ -1,5 +1,13 @@
-import type { MorphStaggerOptions } from '../types';
+import type { MorphAnimationOptions, MorphStaggerOptions, MorphTargets } from '../types';
+import { animeAdapter } from '../adapters/anime-adapter';
 import { resolveAdapter } from '../router';
+
+type Delay = (index: number, total: number) => number;
+const advanced = new WeakMap<Function, (targets: MorphTargets) => Promise<Delay>>();
+
+export function prepareStagger(delay: MorphAnimationOptions['delay'], targets: MorphTargets) {
+  if (typeof delay === 'function') return advanced.get(delay)?.(targets);
+}
 
 /**
  * Create a stagger function for use in animation delays/offsets.
@@ -41,6 +49,21 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
   // For advanced stagger (grid/jitter/seed): delegate to AnimeAdapter
   try {
     const adapter = resolveAdapter({ stagger: options });
+    if (adapter === animeAdapter) {
+      let direct: ReturnType<NonNullable<typeof adapter.stagger>>;
+      const delay = (...args: unknown[]) => (direct ??= adapter.stagger!(value, options))(...args);
+      advanced.set(delay, async targets => {
+        try {
+          await adapter.ensure?.();
+        } catch {
+          return index => index * value;
+        }
+        const compute = adapter.stagger!(value, options);
+        const list = Array.isArray(targets) ? targets.flat() : [targets];
+        return index => Number(compute(list[index], index, list)) / 1000;
+      });
+      return delay;
+    }
     if (adapter.stagger) {
       return adapter.stagger(value, options);
     }
@@ -51,4 +74,3 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
   // Fallback: simple linear stagger
   return (index: number): number => index * value;
 }
-

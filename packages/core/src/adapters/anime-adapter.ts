@@ -98,7 +98,13 @@ function toAnimeOptions(
   const result: Record<string, any> = { ...properties };
 
   if (options?.duration !== undefined) result.duration = options.duration * 1000;
-  if (options?.delay !== undefined) result.delay = options.delay * 1000;
+  const delay = options?.delay;
+  if (typeof delay === 'function') {
+    result.delay = (_target: unknown, index: number, targets: unknown[] | number) =>
+      delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
+  } else if (delay !== undefined) {
+    result.delay = delay * 1000;
+  }
   if (options?.ease !== undefined) result.ease = toAnimeEasing(options.ease);
   if (options?.repeat !== undefined) result.loop = options.repeat;
   if (options?.direction !== undefined) result.direction = options.direction;
@@ -112,8 +118,12 @@ function toAnimeOptions(
   return result;
 }
 
-if (typeof window !== 'undefined') {
-  ensureAnime().catch(() => {});
+function toAnimePosition(offset?: string | number): string | number | undefined {
+  if (typeof offset === 'number') return offset * 1000;
+  return offset?.replace(/([+-]=)([^=]+)$/, (position, operator, value) => {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) ? `${operator}${seconds * 1000}` : position;
+  });
 }
 
 /**
@@ -159,7 +169,7 @@ export const animeAdapter: IAnimationAdapter = {
     // Add segments
     for (const seg of segments) {
       const segOpts = toAnimeOptions(seg.properties, seg.options);
-      tl.add(seg.targets, segOpts, seg.offset);
+      tl.add(seg.targets, segOpts, toAnimePosition(seg.offset));
     }
 
     const controls = wrapAnimeControls(tl);
@@ -172,7 +182,7 @@ export const animeAdapter: IAnimationAdapter = {
       },
       add(addTargets, addProps, offset?) {
         const addOpts = toAnimeOptions(addProps);
-        tl.add(addTargets, addOpts, offset);
+        tl.add(addTargets, addOpts, toAnimePosition(offset));
         return this;
       },
       label(_name, _offset?) {
@@ -202,4 +212,3 @@ export const animeAdapter: IAnimationAdapter = {
     return wrapAnimeControls(animation);
   },
 };
-
