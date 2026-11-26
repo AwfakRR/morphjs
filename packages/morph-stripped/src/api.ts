@@ -472,7 +472,7 @@ export const svg = {
       let elements: Element[];
       try {
         const groups = Array.isArray(targets) ? targets.flat(Infinity) : [targets];
-        elements = a.utils.$(groups.flatMap(target =>
+        elements = a.utils.$(groups.flatMap<Node | typeof groups[number]>(target =>
           typeof NodeList !== 'undefined' && target instanceof NodeList ? Array.from(target) : [target]));
       } catch {
         return mkd();
