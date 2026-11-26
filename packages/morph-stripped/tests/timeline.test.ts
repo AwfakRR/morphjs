@@ -1,6 +1,42 @@
 import { expect, it, vi } from 'vitest';
 import { timeline } from '../src/index';
 
+it.each(['pause', 'cancel'] as const)('keeps top-level Anime composition after %s()', async (action) => {
+  const target = { x: 0 };
+  const first = timeline({ autoplay: false })
+    .add(target as any, { x: [0, 100], duration: 2, ease: 'linear' });
+  await vi.waitFor(() => expect(first.duration).toBeCloseTo(2));
+  first.seek?.(0.5);
+  first[action]();
+  expect(target.x).toBeCloseTo(action === 'pause' ? 25 : 0);
+
+  const second = timeline({ autoplay: false })
+    .add(target as any, { x: [200, 300], duration: 1, ease: 'linear' });
+  try {
+    await vi.waitFor(() => expect(second.duration).toBeCloseTo(1));
+    second.seek?.(0.5);
+    first.seek?.(0.75);
+    expect(target.x).toBeCloseTo(250);
+  } finally {
+    first.cancel();
+    second.cancel();
+  }
+});
+
+it('rewinds elapsed rather than rendered time when cancelling a reversed top-level Anime timeline', async () => {
+  const target = { x: 0 };
+  const tl = timeline({ autoplay: false })
+    .add(target as any, { x: [0, 100], duration: 1, ease: 'linear' });
+  await vi.waitFor(() => expect(tl.duration).toBeCloseTo(1));
+  tl.seek?.(0.4);
+  tl.reverse();
+  tl.pause();
+  expect(target.x).toBeCloseTo(40);
+  tl.cancel();
+  expect(tl.currentTime).toBeCloseTo(1);
+  expect(target.x).toBeCloseTo(100);
+});
+
 it.each(['tween', 'child'] as const)('keeps an autoplaying Anime timeline running after adding a %s', async (kind) => {
   const tl = timeline().add({ x: 0 } as any, { x: 100, duration: 5 });
 
@@ -211,6 +247,21 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
     expect(target.x).toBeCloseTo(75);
     parent.seek(0.25);
     expect(target.x).toBeCloseTo(25);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('resolves an initialized Anime child’s finished promise when its parent reaches the end', async () => {
+  const child = timeline({ autoplay: false }).add({ x: 0 } as any, { x: 100, duration: 1 });
+  await vi.waitFor(() => expect(child.duration).toBeCloseTo(1));
+  const finished = vi.fn();
+  void child.finished.then(finished);
+  const parent = timeline({ autoplay: false }).add(child).label('end');
+
+  try {
+    parent.seek('end');
+    await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
   } finally {
     parent.cancel();
   }
