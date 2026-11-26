@@ -113,7 +113,7 @@ In both editions, `svg.motionPath(targets, path, options?)` (also `morph.svg.mot
 
 The helper applies the path's local x/y coordinates as CSS translations, so align the target's starting origin with the path's coordinate origin. For example, use an SVG marker drawn around `(0, 0)` in the same coordinate space, or an HTML marker positioned at the origin of a 1:1 path viewport. Path and ancestor transforms are not converted across coordinate spaces. This helper loads Anime.js on demand; install `animejs` to use it.
 
-The path translation is applied before the target's existing transform, so a pre-existing rotation or scale does not bend or scale the route. `autoRotate` adds the tangent rotation to that base transform. Inline or stylesheet transforms are captured when the animation starts; apply live effects (for example, a hover rotation) to a child of the path-following target.
+The transform list starts with the path translation, then the tangent rotation if `autoRotate` is enabled, then the target's original transform. This keeps the route and tangent rotation independent of any existing scale. Inline or stylesheet transforms are captured when the animation starts; apply live effects (for example, a hover rotation) to a child of the path-following target.
 
 ### Animation Scopes
 

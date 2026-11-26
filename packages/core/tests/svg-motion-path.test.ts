@@ -102,8 +102,22 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
 
     controls.seek?.(0.6);
     await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
-    expect(marker.style.transform).toBe('translate(40px,20px) translateX(0%) translateY(0em) rotate(0turn) rotate(90deg)');
+    expect(marker.style.transform).toBe('translate(40px,20px) rotate(90deg) translateX(0%) translateY(0em) rotate(0turn)');
     controls.cancel();
+  });
+
+  it('rotates to a diagonal tangent outside the original non-uniform scale', async () => {
+    const { marker, target } = browser();
+    marker.style.transform = 'scale(4, 1)';
+    const track = {
+      getTotalLength: () => 100,
+      getPointAtLength: (distance: number) => ({ x: distance, y: distance }),
+    } as unknown as SVGGeometryElement;
+
+    const controls = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    controls.finish();
+    await controls.finished;
+    expect(marker.style.transform).toBe('translate(100px,100px) rotate(45deg) scale(4, 1)');
   });
 
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
@@ -136,7 +150,7 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     const next = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
     next.seek?.(0.6);
     await vi.waitFor(() => expect(next.currentTime).toBe(0.6));
-    expect(marker.style.transform).toBe('translate(40px,20px) rotate(35deg) scale(1.2) rotate(90deg)');
+    expect(marker.style.transform).toBe('translate(40px,20px) rotate(90deg) rotate(35deg) scale(1.2)');
     next.cancel();
   });
 

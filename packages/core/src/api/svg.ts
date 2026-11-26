@@ -61,7 +61,7 @@ export const svg = {
             rotation = ` rotate(${angle}deg)`;
           }
           for (const { style, base } of markers) {
-            style.transform = translation + (base ? ` ${base}` : '') + rotation;
+            style.transform = translation + rotation + (base ? ` ${base}` : '');
             pathTransforms.set(style, { base, value: style.transform });
           }
         },
