@@ -8,7 +8,7 @@
 *Combines the GPU spring/gesture power of **Motion.js**, the lightweight timeline/SVG magic of **Anime.js v4**, and the heavy-duty specialist muscle of **GSAP v3**.*
 
 [![Version](https://img.shields.io/npm/v/morphjs?style=flat-square&color=6366f1)](https://www.npmjs.com/package/morphjs)
-[![Bundle Size](https://img.shields.io/badge/bundle%20size-~5%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
+[![Bundle Size](https://img.shields.io/badge/bundle%20size-~7%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
 [![AI Agents](https://img.shields.io/badge/AI%20Agents-AGENTS.md-6366f1?style=flat-square)](AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -40,7 +40,7 @@ MorphJS comes in two editions tailored to your architecture:
 
 1. **`morph-stripped`** (*Recommended*)  
    The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
-   - **Size:** `~17 KB raw` / `~5 KB gzip`
+   - **Size:** `~23 KB raw` / `~7 KB gzip` (ESM)
 2. **`morphjs`** (Core)  
    The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
    - **Size:** `~35 KB raw` / `~9 KB gzip`
@@ -132,9 +132,27 @@ MorphJS is purpose-built for the era of AI coding agents (Trae, Cursor, Copilot,
 
 ---
 
+### Scroll reveals
+
+Use `scroll.inView` when an effect should start on entry rather than follow scroll progress. Both `morphjs` and `morph-stripped` expose it on the named `scroll` export and on `morph.scroll`.
+
+```ts
+import { scroll } from 'morph-stripped';
+
+const stop = scroll.inView('.reveal', (element) => {
+  element.classList.add('is-revealed');
+}, { threshold: 0.25 });
+
+// Call stop() when the component unmounts to stop observing.
+```
+
+Pass a selector, a DOM element, or a collection of elements. By default the callback runs once per element when it intersects the viewport. Use `once: false` to fire on each re-entry, `container` to observe within a scrollable element, and `margin` (the observer's root margin) to adjust the trigger boundary. `threshold` is the fraction of the target that must intersect, from 0 to 1 (default 0).
+
+The trigger doesn't animate or hide content on its own. Keep content visible by default and apply reveal motion only under `@media (prefers-reduced-motion: no-preference)`. On the server or in browsers without `IntersectionObserver`, registration returns a no-op cleanup and never calls the callback.
+
 ## 🎮 Interactive Playground
 
-Test every capability live (Gestures, Springs, Timelines, Staggers, SVGs, and ScrollTrigger):
+Try gestures, springs, timelines, staggers, SVGs, scroll tracking, and scroll reveals live:
 
 ```bash
 pnpm install

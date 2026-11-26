@@ -4,6 +4,7 @@ export { timeline } from './api/timeline';
 export { spring } from './api/spring';
 export { stagger } from './api/stagger';
 export { scroll } from './api/scroll';
+export type { MorphInViewOptions } from './api/in-view';
 export { gesture } from './api/gesture';
 export { svg } from './api/svg';
 
