@@ -3,14 +3,14 @@ import type {
   MorphScrollOptions, MorphGestureOptions, MorphSvgOptions, TimelineOptions,
   MorphControls, MorphTimeline,
 } from './types';
-import { loadMotion, loadAnime, loadGsap, wrap, createDeferred, toAnimeOptions, toGsapOptions, runSpring } from './engine';
+import { loadMotion, loadAnime, loadGsapCore, loadScrollTrigger, loadMorphSVG, loadDrawSVG, wrap, createDeferred, toAnimeOptions, toGsapOptions, runSpring } from './engine';
 
 export type AnimateArg = MorphAnimationOptions | number;
 
 export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: AnimateArg): MorphControls {
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
   const e = o.engine || o.adapter;
-  if (e === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
+  if (e === 'gsap') return createDeferred(() => loadGsapFor(props), ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
   if (e === 'motion') return createDeferred(loadMotion, (m) => wrap(m.animate(tgts, props, o), 'm'));
   if (e === 'anime' || 'd' in props || 'strokeDashoffset' in props || o.repeat !== undefined)
     return createDeferred(loadAnime, (a) => wrap(a.animate(tgts, toAnimeOptions(props, o)), 'a'));
@@ -21,11 +21,22 @@ export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: Mor
   return createDeferred(loadMotion, (m) => runSpring(m, tgts, props, opt));
 }
 
+async function loadGsapFor(...props: Record<string, any>[]) {
+  const [gsap] = await Promise.all([
+    loadGsapCore(),
+    props.some(p => p.scrollTrigger !== undefined) && loadScrollTrigger(),
+    props.some(p => p.morphSVG !== undefined) && loadMorphSVG(),
+    props.some(p => p.drawSVG !== undefined) && loadDrawSVG(),
+  ]);
+  return gsap;
+}
+
 export function timeline(opt?: TimelineOptions): MorphTimeline {
   const seq: Array<{ t: any; p: any; o?: any }> = [];
   let realTl: any = null;
   const useGsap = opt?.engine === 'gsap';
   let activeEngine: 'g' | 'a' = useGsap ? 'g' : 'a';
+  let pendingGsapAdd: Promise<void> | undefined;
 
   const buildAnime = (anime: any) => {
     const tl = anime.createTimeline({
@@ -51,17 +62,28 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   };
 
   const ld = useGsap
-    ? () => loadGsap().catch(() => { activeEngine = 'a'; return loadAnime(); })
-    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsap(); });
+    ? () => loadGsapFor(...seq.map(s => s.p)).catch(() => { activeEngine = 'a'; return loadAnime(); })
+    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsapFor(...seq.map(s => s.p)); });
 
-  const deferred = createDeferred(ld, (m) => activeEngine === 'g' ? buildGsap(m) : buildAnime(m));
+  const deferred = createDeferred(
+    () => Promise.resolve().then(ld),
+    (m) => activeEngine === 'g' ? buildGsap(m) : buildAnime(m),
+  );
 
   const tlo: MorphTimeline = {
     ...deferred,
     add(t: any, p: any, o?: any) {
       if (realTl) {
-        if (activeEngine === 'g') realTl.to(t, toGsapOptions(p), o);
-        else realTl.add(t, toAnimeOptions(p), o);
+        if (activeEngine === 'g') {
+          const add = () => { realTl.to(t, toGsapOptions(p), o); };
+          if (pendingGsapAdd || p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) {
+            const next = Promise.all([pendingGsapAdd, loadGsapFor(p)]).then(add);
+            pendingGsapAdd = next;
+            void next.then(() => { if (pendingGsapAdd === next) pendingGsapAdd = undefined; }, () => {});
+          } else {
+            add();
+          }
+        } else realTl.add(t, toAnimeOptions(p), o);
       } else {
         seq.push({ t, p, o });
       }
@@ -111,9 +133,12 @@ const mkd = (c: any) => ({ play: noop, pause: noop, reverse: noop, cancel: c, fi
 
 export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOptions): MorphControls {
   if (o?.pin || o?.scrub || o?.engine === 'gsap') {
-    return createDeferred(() => loadGsap().catch(() => loadMotion()), (m) => {
-      if (m.gsap && m.ScrollTrigger) {
-        if (typeof a === 'function') return mkd(() => m.ScrollTrigger.create({ trigger: o?.target || document.documentElement, scroller: o?.container, start: 'top top', end: 'bottom bottom', pin: o?.pin ?? false, scrub: o?.scrub ?? false, onUpdate: (s: any) => a(s.progress) }).kill());
+    return createDeferred(() => loadScrollTrigger().then(m => m.ScrollTrigger ? m : loadMotion(), () => loadMotion()), (m) => {
+      if (m.ScrollTrigger) {
+        if (typeof a === 'function') {
+          const trigger = m.ScrollTrigger.create({ trigger: o?.target || document.documentElement, scroller: o?.container, start: 'top top', end: 'bottom bottom', pin: o?.pin ?? false, scrub: o?.scrub ?? false, onUpdate: (s: any) => a(s.progress) });
+          return mkd(() => trigger.kill());
+        }
         return wrap(m.gsap.to({}, { scrollTrigger: { trigger: o?.target || document.documentElement, scroller: o?.container, pin: o?.pin ?? false, scrub: o?.scrub ?? true, start: 'top top', end: 'bottom bottom' } }), 'g');
       }
       const r = m.scroll(a, o);
@@ -190,7 +215,7 @@ export const svg = {
     let len = 500;
     els.forEach((el: any) => { if (el?.getTotalLength) { len = el.getTotalLength(); el.style.strokeDasharray = `${len}`; el.setAttribute('stroke-dasharray', `${len}`); } });
     if (o?.engine === 'gsap') {
-      return createDeferred(loadGsap, ({ gsap, DrawSVGPlugin }) => {
+      return createDeferred(loadDrawSVG, ({ gsap, DrawSVGPlugin }) => {
         const v = toGsapOptions({}, o);
         return DrawSVGPlugin ? wrap(ir ? gsap.to(t, { drawSVG: 0, ...v }) : gsap.from(t, { drawSVG: 0, ...v }), 'g') : wrap(gsap.fromTo(els, { strokeDashoffset: ir ? 0 : len }, { strokeDashoffset: ir ? len : 0, ...v }), 'g');
       });
@@ -201,7 +226,7 @@ export const svg = {
   morph(t: MorphTargets, o: MorphSvgOptions & { d: [string, string] }): MorphControls {
     const { d, ...ao } = o;
     if (o?.engine === 'gsap' || o?.morphPrecision !== undefined) {
-      return createDeferred(loadGsap, ({ gsap, MorphSVGPlugin }) => {
+      return createDeferred(loadMorphSVG, ({ gsap, MorphSVGPlugin }) => {
         const v = toGsapOptions({}, ao);
         if (MorphSVGPlugin) { v.morphSVG = { shape: d[1] }; return wrap(gsap.to(t, v), 'g'); }
         v.attr = { d: d[1] }; return wrap(gsap.to(t, v), 'g');
@@ -215,7 +240,7 @@ export const svg = {
     });
   },
   attr(t: MorphTargets, att: Record<string, any>, o?: MorphAnimationOptions): MorphControls {
-    if ((o as any)?.engine === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(t, { attr: att, ...toGsapOptions({}, o) }), 'g'));
+    if ((o as any)?.engine === 'gsap') return createDeferred(loadGsapCore, ({ gsap }) => wrap(gsap.to(t, { attr: att, ...toGsapOptions({}, o) }), 'g'));
     return createDeferred(loadAnime, (a) => wrap(a.animate(t, toAnimeOptions(att, o)), 'a'));
   }
 };

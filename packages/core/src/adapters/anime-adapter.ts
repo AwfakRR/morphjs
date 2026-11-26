@@ -112,10 +112,6 @@ function toAnimeOptions(
   return result;
 }
 
-if (typeof window !== 'undefined') {
-  ensureAnime().catch(() => {});
-}
-
 /**
  * Anime.js v4 adapter — handles timelines, staggering, SVG, and basic tweens.
  */
@@ -202,4 +198,3 @@ export const animeAdapter: IAnimationAdapter = {
     return wrapAnimeControls(animation);
   },
 };
-

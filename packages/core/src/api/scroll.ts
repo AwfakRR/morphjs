@@ -1,8 +1,9 @@
-import type { MorphTargets, MorphAnimationOptions, MorphScrollOptions, MorphControls } from '../types';
+import type { MorphScrollOptions, MorphControls } from '../types';
 import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
-import { animate } from './animate';
+import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
+import { createDeferredControls } from '../utils/deferred-controls';
 
 /**
  * Creates a no-op MorphControls instance for SSR fallbacks.
@@ -64,53 +65,51 @@ export function scroll(
     adapter: (options as any)?.adapter,
     engine: (options as any)?.engine,
   });
-  let controls: MorphControls = createNoopControls();
+  const fallback = (): MorphControls => {
+    if (typeof animationOrCallback !== 'function') return animationOrCallback;
+    let lastScroll = -1;
+    const targetEl = options?.container || options?.target;
+    const scrollEl = targetEl instanceof Element ? targetEl : document.documentElement;
+    const eventTarget = targetEl instanceof Element ? targetEl : window;
 
-  if (typeof animationOrCallback === 'function') {
-    let handled = false;
-    if (adapter.scroll) {
-      try {
-        controls = adapter.scroll(animationOrCallback, options);
-        handled = true;
-      } catch {
-        // Fallback to native listener
+    const onScroll = () => {
+      const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
+      const progress = maxScroll > 0 ? Math.min(1, Math.max(0, scrollEl.scrollTop / maxScroll)) : 0;
+      if (progress !== lastScroll) {
+        lastScroll = progress;
+        animationOrCallback(progress);
       }
-    }
-    if (!handled) {
-      let lastScroll = -1;
-      const targetEl = options?.container || options?.target;
-      const scrollEl = targetEl instanceof Element ? targetEl : document.documentElement;
-      const eventTarget = targetEl instanceof Element ? targetEl : window;
+    };
+    eventTarget.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
 
-      const onScroll = () => {
-        const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-        const scrollY = scrollEl.scrollTop;
-        const progress = maxScroll > 0 ? Math.min(1, Math.max(0, scrollY / maxScroll)) : 0;
-        
-        if (progress !== lastScroll) {
-          lastScroll = progress;
-          animationOrCallback(progress);
-        }
-      };
-      
-      eventTarget.addEventListener('scroll', onScroll, { passive: true });
-      onScroll();
+    return {
+      ...createNoopControls(),
+      cancel: () => eventTarget.removeEventListener('scroll', onScroll),
+      playState: 'running',
+    };
+  };
 
-      controls = {
-        ...createNoopControls(),
-        cancel: () => eventTarget.removeEventListener('scroll', onScroll),
-        playState: 'running'
-      };
-    }
-  } else {
-    if (adapter.scroll) {
-      try {
-        controls = adapter.scroll(animationOrCallback, options);
-      } catch {
-        controls = animationOrCallback;
-      }
+  let controls: MorphControls;
+  try {
+    controls = adapter.scroll?.(animationOrCallback, options) ?? fallback();
+  } catch {
+    const ensure = adapter === gsapAdapter ? ensureScrollTrigger : adapter.ensure?.bind(adapter);
+    if (!ensure) {
+      controls = fallback();
     } else {
-      controls = animationOrCallback;
+      const deferred = createDeferredControls();
+      void ensure().then(() => {
+        if (!adapter.scroll) return deferred.resolve(fallback());
+        let result: MorphControls;
+        try {
+          result = adapter.scroll(animationOrCallback, options);
+        } catch {
+          result = fallback();
+        }
+        deferred.resolve(result);
+      }, () => deferred.resolve(fallback())).catch(deferred.reject);
+      controls = deferred.controls;
     }
   }
 
