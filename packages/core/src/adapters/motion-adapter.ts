@@ -26,7 +26,11 @@ export function getMotionSync(): typeof import('motion') {
   return motionModule;
 }
 
-export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
+export function wrapMotionControls(
+  motionAnimation: any,
+  finished?: PromiseLike<void>,
+  onCancel?: () => void,
+): MorphControls {
   const tracks = motionAnimation.animations ?? [motionAnimation];
   const legacyEnds = !('state' in motionAnimation) ? new WeakMap<object, number>() : undefined;
   if (legacyEnds) {
@@ -122,6 +126,7 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
         track.cancel();
       }
       notifyControlsCanceled(controls);
+      onCancel?.();
     },
     finish: () => motionAnimation.finish(),
     reverse: () => play(true),
@@ -190,16 +195,17 @@ export const motionAdapter: IAnimationAdapter = {
           ease: options.ease !== undefined ? toMotionEasing(options.ease) : undefined,
           onUpdate: afterRender(motion, options.onUpdate),
           onComplete: instant ? undefined : options.onComplete,
+          onCancel: undefined,
         }
       : undefined;
     const animation = motion.animate(targets, keyframes, motionOptions as any);
-    if (!instant) return wrapMotionControls(animation);
+    if (!instant) return wrapMotionControls(animation, undefined, options?.onCancel);
 
     const finished = Promise.resolve(animation.finished).then(
       () => new Promise<void>(resolve => motion.frame.postRender(() => resolve()))
     );
     if (options.onComplete) finished.then(options.onComplete);
-    return wrapMotionControls(animation, finished);
+    return wrapMotionControls(animation, finished, options.onCancel);
   },
 
   spring: (targets: any, keyframes: any, springOptions: MorphSpringOptions, options?: MorphAnimationOptions) => {

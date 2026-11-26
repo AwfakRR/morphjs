@@ -27,7 +27,12 @@ export const loadGsap = load(async () => {
   return { ...scroll, ...morph, ...draw };
 });
 
-export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion').frame): MorphControls {
+export function wrap(
+  anim: any,
+  type: 'm'|'a'|'g',
+  frame?: typeof import('motion').frame,
+  onCancel?: () => void,
+): MorphControls {
   const isA = type === 'a', isG = type === 'g', isM = type === 'm';
   const tracks = isM ? anim.animations ?? [anim] : [];
   const legacyEnds = isM && !('state' in anim) ? new WeakMap<object, number>() : undefined;
@@ -124,6 +129,7 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
         }
         track.cancel?.();
       }
+      onCancel?.();
     },
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => {

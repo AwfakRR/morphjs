@@ -173,6 +173,28 @@ it.each([0.25, -0.15])('keeps the first keyframe when canceling after a complete
   expect(onCancel).toHaveBeenCalledOnce();
 });
 
+it.each([true, false])('notifies a grouped cancel once (all rewound: %s)', async allRewound => {
+  const target = { short: 0, long: 0 };
+  const onCancel = vi.fn();
+  const onPropertyCancel = vi.fn();
+  const options = {
+    engine: 'motion', duration: 1, ease: 'linear', onCancel,
+    ...(allRewound ? {} : { short: { delay: 0.25, onCancel: onPropertyCancel } }),
+  };
+  const controls = animate(target as any, { short: [0, 100], long: [0, 100] }, options);
+  await vi.advanceTimersByTimeAsync(500);
+  controls.reverse();
+  await vi.advanceTimersByTimeAsync(allRewound ? 640 : 320);
+  expect(target.short).toBe(0);
+  if (allRewound) expect(target.long).toBe(0);
+  else expect(target.long).toBeGreaterThan(0);
+  controls.cancel();
+  await vi.advanceTimersByTimeAsync(64);
+  expect(target).toEqual({ short: 0, long: 0 });
+  expect(onCancel).toHaveBeenCalledOnce();
+  expect(onPropertyCancel).toHaveBeenCalledTimes(allRewound ? 0 : 1);
+});
+
 it('reverses each track from its own position after another track finishes', async () => {
   const target = { short: 0, long: 0 };
   const options = {
