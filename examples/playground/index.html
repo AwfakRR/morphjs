@@ -167,6 +167,25 @@
       </div>
     </section>
 
+    <section class="card" id="demo-motion-path">
+      <div class="card-header">
+        <h2>SVG Motion Path</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area svg-area">
+          <svg viewBox="0 0 280 112" width="280" height="112" aria-hidden="true">
+            <path id="motion-track" d="M24 88 C88 88 64 24 132 24 S176 88 256 36"
+                  fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 6" />
+            <path id="motion-marker" d="M-11 -8 L11 0 L-11 8 L-6 0 Z"
+                  fill="var(--c-green)" style="transform: translateX(24px) translateY(88px)" />
+          </svg>
+        </div>
+        <div class="controls">
+          <button id="btn-motion-path">Follow Path</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Framework Tabs -->
     <section class="card framework-section">
       <div class="card-header">

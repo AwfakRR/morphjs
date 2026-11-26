@@ -226,5 +226,14 @@ btnSvgMorph?.addEventListener('click', () => {
   isStar = !isStar;
 });
 
+// --- Demo 8: SVG Motion Path ---
+let pathFlight: ReturnType<typeof svg.motionPath> | undefined;
+document.getElementById('btn-motion-path')?.addEventListener('click', () => {
+  if (pathFlight) pathFlight.restart();
+  else pathFlight = svg.motionPath('#motion-marker', '#motion-track', {
+    duration: 2.5, ease: 'easeInOut', autoRotate: true,
+  });
+});
+
 // --- Framework Tabs ---
 if (typeof document !== 'undefined') initFrameworkTabs(document);

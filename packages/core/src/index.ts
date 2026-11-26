@@ -14,7 +14,7 @@ export { flip } from './api/flip';
 export type { MorphScope } from './api/scope';
 export type { 
   MorphControls, MorphTimeline, MorphAnimationOptions, MorphSpringOptions,
-  MorphStaggerOptions, MorphScrollOptions, MorphGestureOptions, MorphSvgOptions,
+  MorphStaggerOptions, MorphScrollOptions, MorphGestureOptions, MorphSvgOptions, MorphMotionPathOptions,
   MorphFlipOptions, FlipArg, FlipRect, FlipSnapshot, FlipState, FlipAnimationEntry,
   TimelineOptions, TimelineSegment, MorphTargets, MorphTarget,
   IAnimationAdapter, AdapterPlugin, AdapterCapability, AdapterType,

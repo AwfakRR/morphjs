@@ -97,3 +97,12 @@ export interface MorphSvgOptions extends MorphAnimationOptions {
   morphPrecision?: number;
   engine?: 'anime' | 'gsap';
 }
+
+export interface MorphMotionPathOptions extends Pick<
+  MorphAnimationOptions, 'duration' | 'ease' | 'repeat' | 'autoplay' | 'onStart' | 'onUpdate' | 'onComplete'
+> {
+  delay?: number;
+  start?: number;
+  end?: number;
+  autoRotate?: boolean;
+}

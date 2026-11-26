@@ -88,9 +88,13 @@ gesture('.draggable', {
   onDrag: (e, info) => console.log(info.offset.x)
 });
 
-// 7. SVG Draw & Morph (Anime.js default, GSAP MorphSVG for complex shapes)
+// 7. SVG Drawing, Morphing & Motion Paths
 svg.draw('.my-path', { duration: 1.5 });
 svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
+svg.motionPath('.marker', '#track', {
+  duration: 2, ease: 'easeInOut', delay: 0.2, repeat: 1,
+  start: 0.1, end: 0.9, autoRotate: true,
+});
 
 // 8. Layout FLIP Transitions (in `morphjs` core)
 import { flip } from 'morphjs';
@@ -104,6 +108,10 @@ flip.from(state, { duration: 0.4, spring: true });
 Drag limits are signed pixel offsets from the element's starting position; omitted sides are unbounded. The element stays where you leave it by default. Set `momentum: true` to glide within the limits, or `snapToOrigin: true` to spring back to the start instead (snap takes precedence). Drag callbacks report the current offset in pixels and pointer velocity in pixels per second.
 
 In `morphjs` (core), reduced motion disables the glide and makes snap-to-origin immediate.
+
+In both editions, `svg.motionPath(targets, path, options?)` (also `morph.svg.motionPath`) returns standard `MorphControls`. Pass an SVG geometry element or its selector as the path. `start` and `end` are fractions of the path length (default `0` and `1`, clamped to that range); swap them to travel backwards. `autoRotate` defaults to `false`; when enabled, it points the target's positive x-axis along the path's tangent in the direction of increasing path length. Motion is linear by default; `duration` and `delay` are in seconds.
+
+The helper applies the path's local x/y coordinates as CSS translations, so align the target's starting origin with the path's coordinate origin. For example, use an SVG marker drawn around `(0, 0)` in the same coordinate space, or an HTML marker positioned at the origin of a 1:1 path viewport. Path and ancestor transforms are not converted across coordinate spaces. This helper loads Anime.js on demand; install `animejs` to use it.
 
 ### Animation Scopes
 

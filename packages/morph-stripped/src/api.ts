@@ -1,6 +1,6 @@
 import type {
   MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphStaggerOptions,
-  MorphScrollOptions, MorphGestureOptions, MorphSvgOptions, TimelineOptions,
+  MorphScrollOptions, MorphGestureOptions, MorphSvgOptions, MorphMotionPathOptions, TimelineOptions,
   MorphControls, MorphTimeline,
 } from './types';
 import { loadMotion, loadAnime, loadGsapCore, loadScrollTrigger, loadMorphSVG, loadDrawSVG, wrap, createDeferred, toAnimeOptions, toAnimePosition, toGsapOptions, runSpring } from './engine';
@@ -409,6 +409,48 @@ function sampleMorphPaths(doc: Document, paths: [string, string]): [string, stri
 }
 
 export const svg = {
+  motionPath(targets: MorphTargets, path: string | SVGGeometryElement, options: MorphMotionPathOptions = {}): MorphControls {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
+
+    let geometry: SVGGeometryElement | null;
+    try {
+      geometry = typeof path === 'string' ? document.querySelector<SVGGeometryElement>(path) : path;
+    } catch {
+      return mkd();
+    }
+    if (typeof geometry?.getTotalLength !== 'function' || typeof geometry.getPointAtLength !== 'function') {
+      return mkd();
+    }
+
+    const length = geometry.getTotalLength();
+    if (!Number.isFinite(length) || length <= 0) return mkd();
+
+    const { start = 0, end = 1, autoRotate, ease = 'linear', ...timing } = options;
+    const clamp = (value: number) => Math.max(0, Math.min(1, value));
+    const from = (Number.isFinite(start) ? clamp(start) : 0) * length;
+    const to = (Number.isFinite(end) ? clamp(end) : 1) * length;
+    const tween = (sample: (distance: number) => number) => ({
+      from: 0,
+      to: 1,
+      modifier: (progress: number) => sample(from + (to - from) * clamp(progress)),
+    });
+    const properties = {
+      translateX: tween(distance => geometry.getPointAtLength(distance).x),
+      translateY: tween(distance => geometry.getPointAtLength(distance).y),
+      ...(autoRotate && {
+        rotate: tween(distance => {
+          const delta = Math.min(1, length / 2);
+          const before = geometry.getPointAtLength(Math.max(0, distance - delta));
+          const after = geometry.getPointAtLength(Math.min(length, distance + delta));
+          return Math.atan2(after.y - before.y, after.x - before.x) * 180 / Math.PI;
+        }),
+      }),
+    };
+    return createDeferred(() => loadAnime().catch(() => undefined), (a) => a
+      ? wrap(a.animate(targets, toAnimeOptions(properties, { ...timing, ease })), 'a')
+      : mkd());
+  },
+
   draw(t: MorphTargets, o?: MorphSvgOptions): MorphControls {
     const ir = o?.direction === 'reverse' || o?.direction === 'alternate-reverse';
     const els = typeof t === 'string' && typeof document !== 'undefined' ? Array.from(document.querySelectorAll(t)) : Array.isArray(t) || (typeof NodeList !== 'undefined' && t instanceof NodeList) ? Array.from(t as any) : [t];
