@@ -8,9 +8,14 @@ class Marker {
   style = new class {
     transform = '';
     private declarations = new Map<string, { value: string; priority: string }>();
+    get cssText() { return JSON.stringify([...this.declarations]); }
+    set cssText(value: string) { this.declarations = new Map(JSON.parse(value)); }
     getPropertyValue(name: string) { return this.declarations.get(name)?.value ?? ''; }
     getPropertyPriority(name: string) { return this.declarations.get(name)?.priority ?? ''; }
     setProperty(name: string, value: string, priority = '') {
+      if (name === 'transition-property' && this.getPropertyValue('transition').startsWith('var(')) {
+        this.declarations.delete('transition');
+      }
       if (value) this.declarations.set(name, { value, priority });
       else this.declarations.delete(name);
     }
@@ -181,12 +186,20 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(marker.style.transform).toBe('translate(40px,60px) translate(-64px,-29px) rotate(90deg) matrix(4,0,0,1,0,0)');
   });
 
-  it.each([['transform, opacity', 'important'], ['', '']])(
+  it.each([
+    ['transform, opacity', 'important'],
+    ['', ''],
+    ['var(--fade)', ''],
+    ['var(--fade)', 'important'],
+  ])(
     'samples a repeated run without a CSS transform transition (inline: %s)',
     async (transition, priority) => {
       const { marker, target } = browser();
       const property = 'transition-property';
-      marker.style.setProperty(property, transition, priority);
+      const declaration = transition.startsWith('var(') ? 'transition' : property;
+      marker.style.setProperty('--fade', 'opacity 150ms');
+      marker.style.setProperty(declaration, transition, priority);
+      const inline = marker.style.cssText;
       const track = geometry() as unknown as SVGGeometryElement;
       const options = { duration: 1, autoplay: false };
       const first = svg.motionPath(target, track, options);
@@ -209,10 +222,50 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
 
       expect(marker.style.transform).toBe(endpoint);
       expect(reads).toEqual(['', endpoint]);
-      expect(marker.style.getPropertyValue(property)).toBe(transition);
-      expect(marker.style.getPropertyPriority(property)).toBe(priority);
+      expect(marker.style.getPropertyValue(declaration)).toBe(transition);
+      expect(marker.style.getPropertyPriority(declaration)).toBe(priority);
+      expect(marker.style.cssText).toBe(inline);
     },
   );
+
+  it('does not rewrite declarations when CSSOM cannot serialize a variable shorthand with an overriding longhand', async () => {
+    const { marker, target } = browser();
+    const style = marker.style;
+    style.setProperty('transition', 'var(--fade)', 'important');
+    style.setProperty('transition-delay', '25ms', 'important');
+    vi.spyOn(style, 'cssText', 'get').mockReturnValue('transition-property:  !important; transition-delay: 25ms !important;');
+    const write = vi.spyOn(style, 'setProperty');
+    const cancel = vi.fn();
+    const cancelOpacity = vi.fn();
+    const reads: string[] = [];
+    Object.assign(marker, {
+      getAnimations: () => [
+        { transitionProperty: 'transform', cancel: () => { reads.push(style.transform); cancel(); } },
+        { transitionProperty: 'opacity', cancel: cancelOpacity },
+      ],
+    });
+
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false };
+    const first = svg.motionPath(target, track, options);
+    first.finish();
+    await first.finished;
+    const endpoint = style.transform;
+    vi.stubGlobal('window', {
+      getComputedStyle: () => ({ transform: cancel.mock.calls.length ? 'none' : 'matrix(1, 0, 0, 1, 40, 60)' }),
+    });
+
+    const next = svg.motionPath(target, track, options);
+    next.finish();
+    await next.finished;
+
+    expect(style.transform).toBe(endpoint);
+    expect(reads).toEqual(['', endpoint]);
+    expect(cancelOpacity).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(style.getPropertyValue('transition')).toBe('var(--fade)');
+    expect(style.getPropertyPriority('transition-delay')).toBe('important');
+  });
 
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
     const { marker, target } = browser();

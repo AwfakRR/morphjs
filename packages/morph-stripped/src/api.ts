@@ -469,20 +469,30 @@ export const svg = {
         if (inline === value) {
           computed = readTransform();
         } else {
-          const property = 'transition-property';
-          const transition = style.getPropertyValue(property);
-          const transitionPriority = style.getPropertyPriority(property);
-          style.setProperty(property, 'none', 'important');
+          const cssText = style.cssText;
+          // CSSOM can serialize pending var() longhands as empty declarations.
+          const canRestore = !/:\s*(?:!important\s*)?;/.test(cssText) || !element.getAnimations;
+          const cancelTransformTransition = () => {
+            for (const animation of element.getAnimations()) {
+              if ('transitionProperty' in animation && animation.transitionProperty === 'transform') animation.cancel();
+            }
+          };
+          if (canRestore) style.setProperty('transition-property', 'none', 'important');
           try {
             if (priority) style.setProperty('transform', inline, priority);
             else style.transform = inline;
+            if (!canRestore) cancelTransformTransition();
             computed = readTransform();
           } finally {
             style.transform = value;
-            try {
-              readTransform();
-            } finally {
-              style.setProperty(property, transition, transitionPriority);
+            if (canRestore) {
+              try {
+                readTransform();
+              } finally {
+                style.cssText = cssText;
+              }
+            } else {
+              cancelTransformTransition();
             }
           }
         }
