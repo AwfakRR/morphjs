@@ -11,6 +11,7 @@ import type {
   TimelineOptions,
 } from '../types';
 import { toAnimeEasing } from '../easing/easing';
+import { notifyControlsCanceled } from '../utils/controls';
 
 /** Cached Anime.js v4 module */
 let animeModule: Record<string, any> | null = null;
@@ -47,12 +48,13 @@ export function getAnimeSync(): Record<string, any> {
  * Anime.js uses milliseconds and 0-100 progress; MorphJS uses seconds and 0-1.
  */
 export function wrapAnimeControls(animeAnimation: any): MorphControls {
-  return {
+  const controls: MorphControls = {
     play: () => animeAnimation.play(),
     pause: () => animeAnimation.pause(),
     cancel: () => {
       animeAnimation.pause();
       if (typeof animeAnimation.seek === 'function') animeAnimation.seek(0);
+      notifyControlsCanceled(controls);
     },
     finish: () => {
       if (typeof animeAnimation.seek === 'function') {
@@ -87,6 +89,7 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       return Promise.resolve(animeAnimation).then(onfulfilled, onrejected);
     },
   };
+  return controls;
 }
 
 /**
