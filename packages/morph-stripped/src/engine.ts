@@ -139,7 +139,7 @@ export function toGsapOptions(props: Record<string, any>, opt?: any): Record<str
   const r = { ...props };
   const ease = opt?.ease || r.ease;
   if (Array.isArray(ease)) r.ease = cubicBezier(ease);
-  else if (opt?.ease) r.ease = gmap[opt.ease] || opt.ease;
+  else if (ease) r.ease = gmap[ease] || ease;
   if (!opt) return r;
   if (opt.duration !== undefined) r.duration = opt.duration;
   if (opt.delay !== undefined) r.delay = opt.delay;
