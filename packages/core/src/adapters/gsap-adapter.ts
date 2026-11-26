@@ -72,14 +72,14 @@ export function getGsapSync(): any {
  * Wrap a GSAP tween/timeline instance into MorphControls.
  * GSAP natively uses seconds and 0-1 progress — zero conversion overhead.
  */
-export function wrapGsapControls(tween: any): MorphControls {
+export function wrapGsapControls(tween: any, kill = () => tween.kill()): MorphControls {
   const controls: MorphControls = {
     play: () => tween.play(),
     pause: () => tween.pause(),
     reverse: () => tween.reverse(),
     restart: () => tween.restart(),
     cancel: () => {
-      tween.kill();
+      kill();
       notifyControlsCanceled(controls);
     },
     finish: () => {
@@ -279,12 +279,7 @@ export const gsapAdapter: IAnimationAdapter = {
       onUpdate: () => seekControlsProgress(animationOrCallback, playhead.progress),
     });
     const trigger = ScrollTrigger.create({ ...vars, scrub: options?.scrub ?? true, animation: tween });
-    const controls = wrapGsapControls(tween);
-    controls.cancel = () => {
-      trigger.kill();
-      notifyControlsCanceled(controls);
-    };
-    return controls;
+    return wrapGsapControls(tween, () => trigger.kill());
   },
 
   svg(
