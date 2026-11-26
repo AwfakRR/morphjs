@@ -120,6 +120,29 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(marker.style.transform).toBe('translate(100px,100px) rotate(45deg) scale(4, 1)');
   });
 
+  it.each([
+    ['translate(-50%, -50%) scale(4, 1)', 'matrix(4, 0, 0, 1, -36, -16)', 'translate(-36px,-16px)', 'matrix(4,0,0,1,0,0)'],
+    ['', 'matrix3d(4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -36, -16, 2, 1)', 'translate3d(-36px,-16px,2px)',
+      'matrix3d(4,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)'],
+  ])('keeps the center offset outside tangent rotation (%s)', async (inline, computed, offset, linear) => {
+    const { marker, target } = browser();
+    marker.style.transform = inline;
+    const getComputedStyle = vi.fn(() => ({ transform: computed }));
+    vi.stubGlobal('window', { getComputedStyle });
+    const track = geometry() as unknown as SVGGeometryElement;
+
+    const first = svg.motionPath(target, track, { duration: 1, autoplay: false });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe(`translate(40px,60px) ${inline || computed}`);
+
+    const next = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    next.finish();
+    await next.finished;
+    expect(marker.style.transform).toBe(`translate(40px,60px) ${offset} rotate(90deg) ${linear}`);
+    expect(getComputedStyle).toHaveBeenCalledOnce();
+  });
+
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
     const { marker, target } = browser();
     const transform = 'matrix(0.819152, 0.573576, -0.573576, 0.819152, 0, 0)';

@@ -408,7 +408,31 @@ function sampleMorphPaths(doc: Document, paths: [string, string]): [string, stri
   return [sample(from), sample(to)];
 }
 
-const pathTransforms = new WeakMap<CSSStyleDeclaration, { base: string; value: string }>();
+const pathTransforms = new WeakMap<CSSStyleDeclaration, { base: string; computed: string; value: string }>();
+
+function splitPathTransform(base: string, computed: string, autoRotate?: boolean) {
+  if (autoRotate && computed.startsWith('matrix')) {
+    const type = computed.slice(0, computed.indexOf('('));
+    const values = computed.slice(type.length + 1, -1).split(',').map(Number);
+    const is3D = type === 'matrix3d';
+    const start = is3D ? 12 : 4;
+    const [x, y, z = 0, w = 1] = values.slice(start);
+    if (w && (x || y || z)) {
+      const offset = is3D ? ` translate3d(${x / w}px,${y / w}px,${z / w}px)` : ` translate(${x}px,${y}px)`;
+      if (is3D) {
+        for (let i = 0; i < 16; i += 4) {
+          values[i] -= x / w * values[i + 3];
+          values[i + 1] -= y / w * values[i + 3];
+          values[i + 2] -= z / w * values[i + 3];
+        }
+      } else {
+        values.fill(0, start);
+      }
+      return { offset, linear: ` ${type}(${values.join(',')})` };
+    }
+  }
+  return { offset: '', linear: base ? ` ${base}` : '' };
+}
 
 export const svg = {
   motionPath(targets: MorphTargets, path: string | SVGGeometryElement, options: MorphMotionPathOptions = {}): MorphControls {
@@ -438,10 +462,11 @@ export const svg = {
         const previous = pathTransforms.get(style);
         const inline = style.transform;
         const composable = inline.includes('(') && !/\b(?:var|env|attr)\(/i.test(inline);
-        const base = previous && previous.value === inline
-          ? previous.base
-          : composable ? inline : window.getComputedStyle?.(element).transform || '';
-        return [{ style, base: base === 'none' ? '' : base }];
+        const saved = previous?.value === inline ? previous : undefined;
+        const computed = saved?.computed ?? window.getComputedStyle?.(element).transform ?? '';
+        const original = saved?.base ?? (composable ? inline : computed);
+        const base = original === 'none' ? '' : original;
+        return [{ style, base, computed, ...splitPathTransform(base, computed, autoRotate) }];
       });
 
       let progress = 0;
@@ -460,9 +485,9 @@ export const svg = {
             const angle = Math.atan2(after.y - before.y, after.x - before.x) * 180 / Math.PI;
             rotation = ` rotate(${angle}deg)`;
           }
-          for (const { style, base } of markers) {
-            style.transform = translation + rotation + (base ? ` ${base}` : '');
-            pathTransforms.set(style, { base, value: style.transform });
+          for (const { style, base, computed, offset, linear } of markers) {
+            style.transform = translation + offset + rotation + linear;
+            pathTransforms.set(style, { base, computed, value: style.transform });
           }
         },
       };
