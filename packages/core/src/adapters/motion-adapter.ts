@@ -25,7 +25,7 @@ export function getMotionSync(): typeof import('motion') {
   return motionModule;
 }
 
-export function wrapMotionControls(motionAnimation: any, finished: PromiseLike<void> = motionAnimation.finished): MorphControls {
+export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<void>): MorphControls {
   return {
     play: () => motionAnimation.play(),
     pause: () => motionAnimation.pause(),
@@ -43,7 +43,7 @@ export function wrapMotionControls(motionAnimation: any, finished: PromiseLike<v
       return motionAnimation.currentTime ?? 0;
     },
     get finished() {
-      return Promise.resolve(finished);
+      return Promise.resolve(finished ?? motionAnimation.finished);
     },
     get playState() {
       return motionAnimation.playState;
@@ -54,7 +54,7 @@ export function wrapMotionControls(motionAnimation: any, finished: PromiseLike<v
       }
     },
     then: (onfulfilled, onrejected) => {
-      return Promise.resolve(finished).then(onfulfilled, onrejected);
+      return Promise.resolve(finished ?? motionAnimation.finished).then(onfulfilled, onrejected);
     },
     restart: () => {
       motionAnimation.cancel();
