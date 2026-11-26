@@ -13,8 +13,9 @@ vi.mock('gsap/ScrollTrigger', () => ({ ScrollTrigger: { create } }));
 vi.mock('motion', () => ({ scroll: motionScroll }));
 
 describe('core scroll routing', () => {
-  const root = {} as Element;
+  const root = { clientWidth: 1200, clientHeight: 800 } as Element;
   const container = {} as Element;
+  const target = { parentNode: container } as unknown as Element;
 
   beforeEach(() => {
     vi.stubGlobal('window', {});
@@ -42,12 +43,12 @@ describe('core scroll routing', () => {
       const kill = vi.fn();
       create.mockReturnValue({ kill });
       const callback = vi.fn();
-      const controls = scroll(callback, { ...options, container });
+      const controls = scroll(callback, { ...options, target, container });
       await controls.finished;
 
       expect(create).toHaveBeenCalledOnce();
       expect(create).toHaveBeenCalledWith(expect.objectContaining({
-        trigger: root, scroller: container, ...options,
+        trigger: target, scroller: container, ...options,
       }));
       expect(motionScroll).not.toHaveBeenCalled();
       const [{ onUpdate }] = create.mock.lastCall!;
@@ -69,11 +70,11 @@ describe('core scroll routing', () => {
     create.mockReturnValue({ kill });
 
     const animated = animate(animation, { value: 1 }, { engine: 'gsap', duration: 2 });
-    const controls = scroll(animated, { engine: 'gsap', target: root, container, pin: true, scrub });
+    const controls = scroll(animated, { engine: 'gsap', target, container, pin: true, scrub });
 
     await vi.waitFor(() => expect(create).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      animation: playheadTween, pin: true, scrub: scrub ?? true, trigger: root, scroller: container,
+      animation: playheadTween, pin: true, scrub: scrub ?? true, trigger: target, scroller: container,
     }));
     expect(pause).toHaveBeenCalledOnce();
     const [playhead, vars] = to.mock.lastCall!;
@@ -82,7 +83,7 @@ describe('core scroll routing', () => {
     vars.onUpdate();
     playhead.progress = 0.1;
     vars.onUpdate();
-    expect(seek.mock.calls).toEqual([[0.8], [0.2]]);
+    expect(seek.mock.calls).toEqual([[0], [0.8], [0.2]]);
 
     controls.cancel();
     expect(kill).toHaveBeenCalledOnce();
@@ -103,5 +104,62 @@ describe('core scroll routing', () => {
     deferred.resolve({ ...createNoopControls(), duration: 2, pause, seek });
     expect(seek).toHaveBeenCalledWith(1.2);
     expect(pause.mock.invocationCallOrder[0]).toBeLessThan(seek.mock.invocationCallOrder[0]);
+  });
+
+  it('tracks the page without trying to pin the document root', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    create.mockReturnValue({ kill: vi.fn() });
+    try {
+      const controls = scroll(vi.fn(), { pin: true });
+      await controls.finished;
+      expect(create).toHaveBeenCalledWith(expect.objectContaining({
+        trigger: root, pin: false, start: 'top top', end: 'bottom bottom',
+      }));
+      expect(warn).toHaveBeenCalledOnce();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('does not pause the supplied animation when ScrollTrigger creation fails', async () => {
+    const kill = vi.fn();
+    to.mockReturnValue({ kill });
+    create.mockImplementation(() => { throw Error('trigger creation failed'); });
+    const pause = vi.fn();
+    const seek = vi.fn();
+    const animation = { ...createNoopControls(), pause, seek };
+
+    await scroll(animation, { target, pin: true }).finished;
+    expect(create).toHaveBeenCalled();
+    expect(pause).not.toHaveBeenCalled();
+    expect(seek).not.toHaveBeenCalled();
+    expect(kill).toHaveBeenCalled();
+  });
+
+  it('uses a positive default pin range for a short target', async () => {
+    const shortTarget = { parentNode: container, clientHeight: 100 } as unknown as Element;
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), { target: shortTarget, container, pin: true }).finished;
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      trigger: shortTarget, pin: true, start: 'top top', end: '+=100%',
+    }));
+  });
+
+  it.each([
+    { offset: ['start end', 'end start'] as const, start: 'left right', end: 'right left' },
+    { offset: [0.25, '80% 20px'] as const, start: '25% 25%', end: '80% 20px' },
+  ])('maps horizontal offsets $offset to ScrollTrigger intersections', async ({ offset, start, end }) => {
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), { target, container, pin: true, axis: 'x', offset: [...offset] }).finished;
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ horizontal: true, start, end }));
+  });
+
+  it('resolves viewport units as pixels on ScrollTrigger refresh', async () => {
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), { target, container, scrub: true, offset: ['10vw 25vh', 'end'] }).finished;
+    const [{ horizontal, start, end }] = create.mock.lastCall!;
+    expect(horizontal).toBe(false);
+    expect(start()).toBe('120px 200px');
+    expect(end).toBe('bottom bottom');
   });
 });

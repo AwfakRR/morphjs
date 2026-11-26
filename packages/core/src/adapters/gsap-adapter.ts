@@ -114,6 +114,24 @@ export function wrapGsapControls(tween: any, kill = () => tween.kill()): MorphCo
   return controls;
 }
 
+function toScrollTriggerOffset(offset: string | number, horizontal: boolean): string | (() => string) {
+  const [target, scroller] = typeof offset === 'number'
+    ? [String(offset), String(offset)]
+    : offset.trim().split(/\s+/);
+  const edges = [target, scroller ?? (['start', 'center', 'end'].includes(target) ? target : '0')];
+  const position = () => edges.map(edge => {
+    if (edge === 'start') return horizontal ? 'left' : 'top';
+    if (edge === 'end') return horizontal ? 'right' : 'bottom';
+    if (edge && Number.isFinite(Number(edge))) return `${Number(edge) * 100}%`;
+    if (typeof document !== 'undefined') {
+      if (edge.endsWith('vw')) return `${parseFloat(edge) * document.documentElement.clientWidth / 100}px`;
+      if (edge.endsWith('vh')) return `${parseFloat(edge) * document.documentElement.clientHeight / 100}px`;
+    }
+    return edge;
+  }).join(' ');
+  return edges.some(edge => /v[wh]$/.test(edge)) ? position : position();
+}
+
 /**
  * Convert MorphAnimationOptions to GSAP vars object.
  * GSAP uses seconds natively — no ms conversion needed (unlike Anime.js).
@@ -237,12 +255,27 @@ export const gsapAdapter: IAnimationAdapter = {
       throw new Error('[MorphJS] ScrollTrigger plugin not available. Falling back.');
     }
 
+    const root = typeof document === 'undefined' ? undefined : document.documentElement;
+    const triggerTarget = options?.target ?? root;
+    let pin = options?.pin ?? false;
+    if (pin) {
+      const pinned = pin === true ? triggerTarget : typeof pin === 'string' ? gsap.utils.toArray(pin)[0] : pin;
+      if (!pinned?.parentNode || pinned === root || pinned === pinned.ownerDocument?.body || pinned === options?.container) {
+        console.warn('[MorphJS] Scroll pinning requires a pinnable element; ignoring pin.');
+        pin = false;
+      }
+    }
+    const horizontal = options?.axis === 'x';
+    const [start, end] = options?.offset ?? [];
     const vars = {
-      trigger: options?.target || document.documentElement,
+      trigger: triggerTarget,
       scroller: options?.container,
-      start: 'top top',
-      end: 'bottom bottom',
-      pin: options?.pin ?? false,
+      horizontal,
+      start: start === undefined ? (horizontal ? 'left left' : 'top top') : toScrollTriggerOffset(start, horizontal),
+      end: end === undefined
+        ? (pin ? '+=100%' : horizontal ? 'right right' : 'bottom bottom')
+        : toScrollTriggerOffset(end, horizontal),
+      pin,
     };
 
     if (typeof animationOrCallback === 'function') {
@@ -269,16 +302,26 @@ export const gsapAdapter: IAnimationAdapter = {
       };
     }
 
-    animationOrCallback.pause();
+    let attached = false;
     const playhead = { progress: 0 };
+    const update = () => seekControlsProgress(animationOrCallback, playhead.progress);
     const tween = gsap.to(playhead, {
       progress: 1,
       duration: 1,
       ease: 'none',
       paused: true,
-      onUpdate: () => seekControlsProgress(animationOrCallback, playhead.progress),
+      onUpdate: () => { if (attached) update(); },
     });
-    const trigger = ScrollTrigger.create({ ...vars, scrub: options?.scrub ?? true, animation: tween });
+    let trigger: { kill(): void };
+    try {
+      trigger = ScrollTrigger.create({ ...vars, scrub: options?.scrub ?? true, animation: tween });
+    } catch (err) {
+      tween.kill();
+      throw err;
+    }
+    animationOrCallback.pause();
+    attached = true;
+    update();
     return wrapGsapControls(tween, () => trigger.kill());
   },
 
