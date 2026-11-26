@@ -1,6 +1,6 @@
 import 'animejs';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { adapterRegistry, configure, svg } from '../src/index';
+import { adapterRegistry, configure, stateManager, svg } from '../src/index';
 import { animeAdapter } from '../src/adapters/anime-adapter';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 import { createNoopControls } from '../src/utils/controls';
@@ -145,10 +145,12 @@ it.each(['play', 'resume', 'cancel'] as const)('handles %s after the first Motio
   expect(offsets()[0]).toBe(0);
   expect(offsets()[1]).toBeGreaterThan(0);
   if (action === 'cancel') {
+    expect(stateManager.getRunning()).toContainEqual(expect.objectContaining({ controls }));
     controls.cancel();
     await vi.advanceTimersByTimeAsync(200);
     expect(offsets()).toEqual([100, 240]);
     expect(onComplete).not.toHaveBeenCalled();
+    expect(stateManager.getRunning()).not.toContainEqual(expect.objectContaining({ controls }));
     return;
   }
 

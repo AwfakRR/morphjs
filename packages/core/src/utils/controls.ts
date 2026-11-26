@@ -65,7 +65,7 @@ export function groupControls(
     cancelled = false;
     run = observe();
   };
-  return {
+  const group: MorphControls = {
     play: () => {
       if (!cancelled && run.pending.size) run.pending.forEach(control => control.play());
       else {
@@ -81,6 +81,7 @@ export function groupControls(
         if (!run.pending.has(control)) resetFinished?.(control);
         control.cancel();
       });
+      notifyControlsCanceled(group);
     },
     finish: () => controls.forEach(control => control.finish()),
     restart: () => {
@@ -99,4 +100,5 @@ export function groupControls(
     get finished() { return run.finished; },
     then: (onFulfilled, onRejected) => run.finished.then(onFulfilled, onRejected),
   };
+  return group;
 }
