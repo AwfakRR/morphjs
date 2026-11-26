@@ -23,7 +23,7 @@ export function inView(
     for (const entry of entries) {
       const previous = visibility.get(entry.target);
       if (previous === undefined) continue;
-      const visible = entry.isIntersecting && entry.intersectionRatio >= threshold;
+      const visible = entry.isIntersecting && entry.intersectionRatio >= observer.thresholds[0];
       if (visible === previous) continue;
       if (!visible || !once) {
         visibility.set(entry.target, visible);

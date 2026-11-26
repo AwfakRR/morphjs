@@ -6,10 +6,11 @@ function setup() {
   const first = { nodeType: 1 } as Element;
   const second = { nodeType: 1 } as Element;
   const querySelectorAll = vi.fn(() => [first, second]);
-  const observer = { observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn() };
+  const observer = { observe: vi.fn(), unobserve: vi.fn(), disconnect: vi.fn(), thresholds: [0] };
   let notify: IntersectionObserverCallback;
-  const Observer = vi.fn(function (callback: IntersectionObserverCallback) {
+  const Observer = vi.fn(function (callback: IntersectionObserverCallback, options: { threshold: number }) {
     notify = callback;
+    observer.thresholds = [Math.fround(options.threshold)];
     return observer;
   });
   vi.stubGlobal('window', {});
@@ -61,6 +62,17 @@ describe.each([
     emit(reveal, entry(first, 0), entry(first, 1), entry(second, 0.5));
     expect(enter.mock.calls).toEqual([[first, reveal], [second, expect.any(Object)]]);
     expect(observer.unobserve.mock.calls).toEqual([[first], [second]]);
+  });
+
+  it('fires at the native threshold when Chromium rounds it below the requested threshold', () => {
+    const { first, entry, emit } = setup();
+    const enter = vi.fn();
+    scroll.inView(first, enter, { threshold: 0.7 });
+    emit(entry(first, Math.fround(0.69)));
+    expect(enter).not.toHaveBeenCalled();
+    const crossing = entry(first, Math.fround(0.7));
+    emit(crossing);
+    expect(enter.mock.calls).toEqual([[first, crossing]]);
   });
 
   it('re-arms below the threshold and stops queued entries after cleanup', () => {
