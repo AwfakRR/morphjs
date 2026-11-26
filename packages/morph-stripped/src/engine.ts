@@ -47,14 +47,19 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
     }
   }
   const pendingTimes = isM ? new WeakMap<object, { time: number }>() : undefined;
-  const readTime = (track: any) => pendingTimes?.get(track)?.time ?? track.time ?? 0;
-  const delayOf = (track: any) => {
-    const driver = track.animation ?? track;
-    return typeof driver.tick === 'function' ? (driver.options?.delay ?? 0) / 1000 : 0;
+  const driverOf = (track: any) => track.animation ?? track;
+  const delayOf = (driver: any) =>
+    typeof driver.tick === 'function' ? (driver.options?.delay ?? 0) / 1000 : 0;
+  const signedDelay = (track: any, delay: number) => track.speed < 0 ? -delay : delay;
+  const readTime = (track: any, driver = driverOf(track), delay = delayOf(driver)) => {
+    if (delay && track.state === 'paused' && driver.holdTime != null) {
+      return Math.max(0, driver.holdTime / 1000 - signedDelay(track, delay));
+    }
+    return pendingTimes?.get(track)?.time ?? track.time ?? 0;
   };
-  const writeTime = (track: any, time: number, delay = delayOf(track)) => {
+  const writeTime = (track: any, time: number, delay = delayOf(driverOf(track))) => {
     // Motion's JS driver reads sampled time but writes time before its direction-dependent delay.
-    track.time = time + (track.speed < 0 ? -delay : delay);
+    track.time = time + signedDelay(track, delay);
     if (delay && frame && pendingTimes) {
       const pending = { time };
       pendingTimes.set(track, pending);
@@ -66,9 +71,10 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
   const playMotion = (backward = false) => {
     for (const track of tracks) {
       const { speed, state } = track;
-      const time = legacyEnds?.get(track) ?? readTime(track);
+      const driver = driverOf(track);
+      const delay = delayOf(driver);
+      const time = legacyEnds?.get(track) ?? readTime(track, driver, delay);
       legacyEnds?.delete(track);
-      const delay = delayOf(track);
       if (backward) track.speed = -Math.abs(speed || 1);
       const running = state === 'running';
       if (!backward || !running) track.play();
@@ -83,10 +89,14 @@ export function wrap(anim: any, type: 'm'|'a'|'g', frame?: typeof import('motion
     pause: () => {
       if (!isM) return anim.pause?.();
       for (const track of tracks) {
-        const delay = delayOf(track);
-        const time = delay ? readTime(track) : 0;
+        const driver = driverOf(track);
+        // Motion 11 pauses on sampled time. Keep the raw clock, including any remaining delay.
+        const rawTime = delayOf(driver) && !driver.updateTime && driver.state === 'running' &&
+          driver.driver && driver.startTime != null
+          ? driver.holdTime ?? Math.round(driver.driver.now() - driver.startTime) * track.speed
+          : undefined;
         track.pause();
-        if (delay) writeTime(track, time, delay);
+        if (rawTime !== undefined) track.time = rawTime / 1000;
       }
     },
     reverse: () => isM ? playMotion(true) : anim.reverse?.(),

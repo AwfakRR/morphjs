@@ -115,6 +115,29 @@ it('seeks and reverses a delayed JS tween on its rendered playhead', async () =>
   }
 });
 
+it('preserves the unelapsed part of the initial Motion delay when paused', async () => {
+  const target = { value: 0 };
+  const controls = animate(target as any, { value: [0, 100] }, {
+    engine: 'motion', duration: 2, delay: 0.5, ease: 'linear',
+  });
+  try {
+    await vi.advanceTimersByTimeAsync(112);
+    controls.pause();
+    await vi.advanceTimersByTimeAsync(640);
+    expect(target.value).toBe(0);
+    expect(controls.currentTime).toBe(0);
+
+    controls.play();
+    await vi.advanceTimersByTimeAsync(320);
+    expect(target.value).toBe(0);
+    await vi.advanceTimersByTimeAsync(128);
+    expect(target.value).toBeGreaterThan(1);
+    expect(target.value).toBeLessThan(5);
+  } finally {
+    controls.cancel();
+  }
+});
+
 it('reverses each track from its own position after another track finishes', async () => {
   const target = { short: 0, long: 0 };
   const options = {

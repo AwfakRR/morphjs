@@ -90,4 +90,27 @@ describe.each([
       controls.cancel();
     }
   });
+
+  it('preserves the unelapsed part of a JS tween delay when paused', async () => {
+    const target = { value: 0 };
+    const group = motion.animate(target as any, { value: [0, 100] }, {
+      delay: 0.5, duration: 2, ease: 'linear',
+    });
+    const controls = wrapControls(group);
+    try {
+      await vi.advanceTimersByTimeAsync(112);
+      controls.pause();
+      await vi.advanceTimersByTimeAsync(640);
+      expect(target.value).toBe(0);
+
+      controls.play();
+      await vi.advanceTimersByTimeAsync(320);
+      expect(target.value).toBe(0);
+      await vi.advanceTimersByTimeAsync(128);
+      expect(target.value).toBeGreaterThan(1);
+      expect(target.value).toBeLessThan(5);
+    } finally {
+      controls.cancel();
+    }
+  });
 });
