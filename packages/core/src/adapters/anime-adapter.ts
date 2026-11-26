@@ -69,6 +69,9 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
         animeAnimation.seek(time * 1000);
       }
     },
+    get duration() {
+      return animeAnimation.duration / 1000;
+    },
     get progress() {
       return animeAnimation.progress ?? 0;
     },
