@@ -1,6 +1,6 @@
 import type { MorphAnimationOptions, MorphStaggerOptions, MorphTargets } from '../types';
 import { animeAdapter } from '../adapters/anime-adapter';
-import { resolveAdapter } from '../router';
+import { adapterRegistry } from '../adapters/adapter';
 
 type Delay = (index: number, total: number) => number;
 const advanced = new WeakMap<Function, (targets: MorphTargets) => Promise<Delay>>();
@@ -48,7 +48,9 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
 
   // For advanced stagger (grid/jitter/seed): delegate to AnimeAdapter
   try {
-    const adapter = resolveAdapter({ stagger: options });
+    // Delays are engine-neutral numbers, so compute them with the stagger engine
+    // regardless of the default animation adapter.
+    const adapter = adapterRegistry.findByCapability('stagger');
     if (adapter === animeAdapter) {
       let direct: ReturnType<NonNullable<typeof adapter.stagger>>;
       const delay = (...args: unknown[]) => (direct ??= adapter.stagger!(value, options))(...args);
@@ -64,7 +66,7 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
       });
       return delay;
     }
-    if (adapter.stagger) {
+    if (adapter?.stagger) {
       return adapter.stagger(value, options);
     }
   } catch {
