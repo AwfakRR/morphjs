@@ -184,19 +184,29 @@ h1 {
   border-color: #52525b;
 }
 
-.controls.sliders label {
+.controls.sliders label,
+.controls.scrub label {
   display: flex;
   align-items: center;
   font-size: 0.875rem;
   width: 100%;
-  margin-bottom: 0.5rem;
   color: var(--text-muted);
 }
 
-.controls.sliders input {
+.controls.sliders label {
+  margin-bottom: 0.5rem;
+}
+
+.controls.sliders input,
+.controls.scrub input {
   flex-grow: 1;
   min-width: 0;
   margin: 0 1rem;
+}
+
+.controls.scrub input {
+  margin-inline-end: 0;
+  min-height: 1.5rem;
 }
 
 .controls.sliders span {
