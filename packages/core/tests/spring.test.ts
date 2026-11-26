@@ -102,16 +102,24 @@ describe('Motion springs with reduced motion', () => {
     vi.useRealTimers();
   });
 
+  type Callbacks = { onUpdate: () => void; onComplete: () => void };
+
   it.each([
-    ['animate({ spring })', (proxy: any, onUpdate: () => void) =>
-      animate(proxy, { val: 100 }, { spring: { stiffness: 100, damping: 10 }, onUpdate })],
-    ['spring()', (proxy: any, onUpdate: () => void) => spring(proxy, { val: 100 }, undefined, { onUpdate })],
-    ['keyframe spring()', (proxy: any, onUpdate: () => void) =>
-      spring(proxy, { val: [0, 140, 100] }, {}, { onUpdate })],
+    ['animate({ spring })', (proxy: any, callbacks: Callbacks) =>
+      animate(proxy, { val: 100 }, { spring: { stiffness: 100, damping: 10 }, ...callbacks })],
+    ['spring()', (proxy: any, callbacks: Callbacks) => spring(proxy, { val: 100 }, undefined, callbacks)],
+    ['keyframe spring()', (proxy: any, callbacks: Callbacks) =>
+      spring(proxy, { val: [0, 140, 100] }, {}, callbacks)],
   ])('jumps %s straight to its final value', async (_, run) => {
     const proxy = { val: 0 };
     const updates: number[] = [];
-    const controls = run(proxy, () => updates.push(proxy.val));
+    const events: string[] = [];
+    const controls = run(proxy, {
+      onUpdate: () => (events.push('update'), updates.push(proxy.val)),
+      onComplete: () => events.push('complete'),
+    });
+    let finishedWith: number | undefined;
+    controls.finished.then(() => (finishedWith = proxy.val));
     const samples: number[] = [];
 
     for (let elapsed = 0; elapsed < 1000; elapsed += 50) {
@@ -124,5 +132,7 @@ describe('Motion springs with reduced motion', () => {
     expect(samples).toEqual(samples.map(() => 100));
     expect(updates.length).toBeGreaterThan(0);
     expect(updates).toEqual(updates.map(() => 100));
+    expect(events.at(-1)).toBe('complete');
+    expect(finishedWith).toBe(100);
   });
 });

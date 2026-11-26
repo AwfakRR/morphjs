@@ -25,7 +25,7 @@ export function getMotionSync(): typeof import('motion') {
   return motionModule;
 }
 
-export function wrapMotionControls(motionAnimation: any): MorphControls {
+export function wrapMotionControls(motionAnimation: any, finished: PromiseLike<void> = motionAnimation.finished): MorphControls {
   return {
     play: () => motionAnimation.play(),
     pause: () => motionAnimation.pause(),
@@ -43,7 +43,7 @@ export function wrapMotionControls(motionAnimation: any): MorphControls {
       return motionAnimation.currentTime ?? 0;
     },
     get finished() {
-      return Promise.resolve(motionAnimation.finished);
+      return Promise.resolve(finished);
     },
     get playState() {
       return motionAnimation.playState;
@@ -54,7 +54,7 @@ export function wrapMotionControls(motionAnimation: any): MorphControls {
       }
     },
     then: (onfulfilled, onrejected) => {
-      return Promise.resolve(motionAnimation.finished).then(onfulfilled, onrejected);
+      return Promise.resolve(finished).then(onfulfilled, onrejected);
     },
     restart: () => {
       motionAnimation.cancel();
@@ -75,15 +75,24 @@ export const motionAdapter: IAnimationAdapter = {
 
   animate: (targets: any, keyframes: any, options?: MorphAnimationOptions) => {
     const motion = getMotionSync();
+    // Motion settles instant animations before the frame that applies them, so completion waits for that render.
+    const instant = options?.duration === 0;
     const motionOptions = options
       ? {
           ...options,
           ease: options.ease !== undefined ? toMotionEasing(options.ease) : undefined,
           onUpdate: afterRender(motion, options.onUpdate),
+          onComplete: instant ? undefined : options.onComplete,
         }
       : undefined;
     const animation = motion.animate(targets, keyframes, motionOptions as any);
-    return wrapMotionControls(animation);
+    if (!instant) return wrapMotionControls(animation);
+
+    const finished = Promise.resolve(animation.finished).then(
+      () => new Promise<void>(resolve => motion.frame.postRender(() => resolve()))
+    );
+    if (options.onComplete) finished.then(options.onComplete);
+    return wrapMotionControls(animation, finished);
   },
 
   spring: (targets: any, keyframes: any, springOptions: MorphSpringOptions, options?: MorphAnimationOptions) => {
