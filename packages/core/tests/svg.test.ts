@@ -39,7 +39,7 @@ describe('core SVG helpers', () => {
   it('routes morph through GSAP MorphSVGPlugin with an explicit adapter', async () => {
     await gsapAdapter.ensure!();
     const d: [string, string] = ['M0 0 L10 0', 'M0 0 L10 10'];
-    svg.morph('.path', { d, adapter: 'gsap', duration: 2 });
+    await svg.morph('.path', { d, adapter: 'gsap', duration: 2 }).finished;
 
     expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: d[0] } }, {
       morphSVG: { shape: d[1] },
@@ -53,7 +53,7 @@ describe('core SVG helpers', () => {
     ['alternate-reverse', '100%', '0%'],
   ] as const)('routes %s draw through DrawSVGPlugin', async (direction, from, to) => {
     await gsapAdapter.ensure!();
-    svg.draw(path, { engine: 'gsap', direction, duration: 2 });
+    await svg.draw(path, { engine: 'gsap', direction, duration: 2 }).finished;
 
     expect(gsap.fromTo).toHaveBeenCalledWith([path], { drawSVG: from }, {
       drawSVG: to,
@@ -89,7 +89,7 @@ describe('core SVG helpers', () => {
 
   it('keeps sibling SVG attributes when GSAP morphs the path', async () => {
     await gsapAdapter.ensure!();
-    svg.attr(path, { d: ['M0 0 L10 0', 'M0 0 L10 10'], fill: '#ff0000' }, { adapter: 'gsap' });
+    await svg.attr(path, { d: ['M0 0 L10 0', 'M0 0 L10 10'], fill: '#ff0000' }, { adapter: 'gsap' }).finished;
 
     expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: 'M0 0 L10 0' } }, {
       morphSVG: { shape: 'M0 0 L10 10' },
@@ -100,7 +100,7 @@ describe('core SVG helpers', () => {
   it('starts GSAP morph and attribute pairs at the last value for alternate-reverse', async () => {
     await gsapAdapter.ensure!();
     const d = ['M0 0 L10 0', 'M0 0 L10 10'];
-    svg.attr(path, { d, r: [10, 50] }, { adapter: 'gsap', direction: 'alternate-reverse', repeat: 1 });
+    await svg.attr(path, { d, r: [10, 50] }, { adapter: 'gsap', direction: 'alternate-reverse', repeat: 1 }).finished;
 
     expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: d[1], r: 50 } }, {
       morphSVG: { shape: d[0] },

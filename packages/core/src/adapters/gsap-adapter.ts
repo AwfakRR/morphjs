@@ -11,39 +11,52 @@ import type {
   TimelineOptions,
 } from '../types';
 import { toGsapEasing } from '../easing/easing';
+import { createDeferredControls } from '../utils/deferred-controls';
 
-/** Cached GSAP module and plugins */
+/** Cached GSAP module */
 let gsapModule: any = null;
 let gsapLoadPromise: Promise<any> | null = null;
 
 export async function ensureGsap(): Promise<any> {
   if (gsapModule) return gsapModule;
   if (!gsapLoadPromise) {
-    gsapLoadPromise = Promise.all([
-      import('gsap'),
-      import('gsap/ScrollTrigger').catch(() => null),
-      import('gsap/MorphSVGPlugin').catch(() => null),
-      import('gsap/DrawSVGPlugin').catch(() => null),
-    ]).then(([gsapPkg, stPkg, morphPkg, drawPkg]) => {
-      const gsap = gsapPkg.gsap || gsapPkg.default || gsapPkg;
-      const plugins: any[] = [];
-      if (stPkg?.ScrollTrigger) plugins.push(stPkg.ScrollTrigger);
-      if (morphPkg?.MorphSVGPlugin) plugins.push(morphPkg.MorphSVGPlugin);
-      if (drawPkg?.DrawSVGPlugin) plugins.push(drawPkg.DrawSVGPlugin);
-      if (plugins.length) gsap.registerPlugin(...plugins);
-
-      gsapModule = {
-        gsap,
-        ScrollTrigger: stPkg?.ScrollTrigger || null,
-        MorphSVGPlugin: morphPkg?.MorphSVGPlugin || null,
-        DrawSVGPlugin: drawPkg?.DrawSVGPlugin || null,
-      };
+    gsapLoadPromise = import('gsap').then(pkg => {
+      gsapModule = { gsap: pkg.gsap || pkg.default || pkg };
       return gsapModule;
     }).catch(() => {
       throw new Error('[MorphJS] "gsap" package is required. Install it: pnpm add gsap');
     });
   }
   return gsapLoadPromise;
+}
+
+function gsapPlugin<K extends string>(name: K, importer: () => Promise<Record<K, any>>) {
+  let pending: Promise<void>;
+  return () => (pending ||= Promise.all([ensureGsap(), importer().catch(() => null)]).then(([mod, pkg]) => {
+    const plugin = pkg?.[name] ?? null;
+    if (plugin) mod.gsap.registerPlugin(plugin);
+    mod[name] = plugin;
+  }));
+}
+
+export const ensureScrollTrigger = gsapPlugin('ScrollTrigger', () => import('gsap/ScrollTrigger'));
+const ensureMorphSVG = gsapPlugin('MorphSVGPlugin', () => import('gsap/MorphSVGPlugin'));
+const ensureDrawSVG = gsapPlugin('DrawSVGPlugin', () => import('gsap/DrawSVGPlugin'));
+
+function pendingPlugins(properties: Record<string, any>): Promise<void>[] {
+  const mod = getGsapSync();
+  return [
+    properties.scrollTrigger !== undefined && mod.ScrollTrigger === undefined && ensureScrollTrigger(),
+    properties.morphSVG !== undefined && mod.MorphSVGPlugin === undefined && ensureMorphSVG(),
+    properties.drawSVG !== undefined && mod.DrawSVGPlugin === undefined && ensureDrawSVG(),
+  ].filter((load): load is Promise<void> => !!load);
+}
+
+function afterPlugins(loads: Promise<void>[], run: () => MorphControls): MorphControls {
+  if (!loads.length) return run();
+  const deferred = createDeferredControls();
+  void Promise.all(loads).then(() => deferred.resolve(run())).catch(deferred.reject);
+  return deferred.controls;
 }
 
 export function getGsapSync(): any {
@@ -102,7 +115,12 @@ function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOpt
   const vars: Record<string, any> = { ...properties };
 
   if (options?.duration !== undefined) vars.duration = options.duration;
-  if (options?.delay !== undefined) vars.delay = options.delay;
+  const delay = options?.delay;
+  if (typeof delay === 'function') {
+    vars.delay = (index: number, _target: unknown, targets: unknown[]) => delay(index, targets.length);
+  } else if (delay !== undefined) {
+    vars.delay = delay;
+  }
   if (options?.ease !== undefined) vars.ease = toGsapEasing(options.ease);
   if (options?.repeat !== undefined) vars.repeat = options.repeat === Infinity ? -1 : options.repeat;
   if (options?.direction === 'alternate' || options?.direction === 'alternate-reverse') vars.yoyo = true;
@@ -115,11 +133,6 @@ function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOpt
   if (options?.onComplete) vars.onComplete = options.onComplete;
 
   return vars;
-}
-
-// Auto-preload GSAP in browser environments
-if (typeof window !== 'undefined') {
-  ensureGsap().catch(() => {});
 }
 
 /**
@@ -137,8 +150,7 @@ export const gsapAdapter: IAnimationAdapter = {
   ): MorphControls {
     const { gsap } = getGsapSync();
     const vars = toGsapVars(properties, options);
-    const tween = gsap.to(targets, vars);
-    return wrapGsapControls(tween);
+    return afterPlugins(pendingPlugins(vars), () => wrapGsapControls(gsap.to(targets, vars)));
   },
 
   timeline(
@@ -156,32 +168,46 @@ export const gsapAdapter: IAnimationAdapter = {
       defaults: Object.keys(defaults).length ? defaults : undefined,
     });
 
-    for (const seg of segments) {
-      const vars = toGsapVars(seg.properties, seg.options);
-      tl.to(seg.targets, vars, seg.offset);
-    }
-
-    const controls = wrapGsapControls(tl);
-
-    return {
-      ...controls,
-      get duration() {
-        return tl.duration() || 0;
-      },
-      add(addTargets, addProps, offset?) {
-        const addVars = toGsapVars(addProps);
-        tl.to(addTargets, addVars, offset);
-        return this;
-      },
-      label(name, offset?) {
-        tl.addLabel(name, offset);
-        return this;
-      },
-      addPause(offset?, callback?) {
-        tl.addPause(offset, callback);
-        return this;
-      },
+    let pending: Promise<void> | undefined;
+    const enqueue = (run: () => void, loads: Promise<void>[] = []) => {
+      if (!pending && !loads.length) {
+        run();
+        return;
+      }
+      const next = Promise.all([pending, ...loads]).then(run);
+      pending = next;
+      void next.then(() => { if (pending === next) pending = undefined; }, () => {});
     };
+    const add = (targets: MorphTargets, vars: Record<string, any>, offset?: string | number) => {
+      enqueue(() => { tl.to(targets, vars, offset); }, pendingPlugins(vars));
+    };
+    segments.forEach(seg => add(seg.targets, toGsapVars(seg.properties, seg.options), seg.offset));
+
+    const wrapped = wrapGsapControls(tl);
+    const controls = pending
+      ? afterPlugins([pending], () => {
+          if (options?.autoplay !== false) tl.play();
+          return wrapped;
+        })
+      : wrapped;
+    if (pending) tl.pause();
+
+    const timeline = Object.assign(controls, {
+      add(addTargets: MorphTargets, addProps: Record<string, any>, offset?: number | string) {
+        add(addTargets, toGsapVars(addProps), offset);
+        return timeline;
+      },
+      label(name: string, offset?: number | string) {
+        enqueue(() => { tl.addLabel(name, offset); });
+        return timeline;
+      },
+      addPause(offset?: number | string, callback?: () => void) {
+        enqueue(() => { tl.addPause(offset, callback); });
+        return timeline;
+      },
+    }) as MorphTimeline;
+    Object.defineProperty(timeline, 'duration', { get: () => tl.duration() || 0 });
+    return timeline;
   },
 
   stagger(value: number, options?: MorphStaggerOptions): any {
@@ -248,36 +274,42 @@ export const gsapAdapter: IAnimationAdapter = {
     properties: Record<string, any>,
     options?: MorphSvgOptions
   ): MorphControls {
-    const { gsap, MorphSVGPlugin, DrawSVGPlugin } = getGsapSync();
-    const from: Record<string, any> = {};
-    const to = toGsapVars({}, options);
-    const fromAttrs: Record<string, any> = {};
-    const toAttrs: Record<string, any> = {};
-    const reversed = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
+    const mod = getGsapSync();
+    const dashoffset = properties.strokeDashoffset;
+    const draw = Array.isArray(dashoffset) && dashoffset.length === 2 && dashoffset[0] !== undefined;
+    const loads = pendingPlugins({ morphSVG: properties.d, drawSVG: draw ? true : undefined });
+    return afterPlugins(loads, () => {
+      const { gsap, MorphSVGPlugin, DrawSVGPlugin } = mod;
+      const from: Record<string, any> = {};
+      const to = toGsapVars({}, options);
+      const fromAttrs: Record<string, any> = {};
+      const toAttrs: Record<string, any> = {};
+      const reversed = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
 
-    for (const [name, value] of Object.entries(properties)) {
-      let [start, end] = Array.isArray(value) && value.length === 2 ? value : [undefined, value];
-      if (name === 'strokeDashoffset') {
-        if (DrawSVGPlugin && start !== undefined) {
-          from.drawSVG = reversed ? '100%' : '0%';
-          to.drawSVG = reversed ? '0%' : '100%';
+      for (const [name, value] of Object.entries(properties)) {
+        let [start, end] = Array.isArray(value) && value.length === 2 ? value : [undefined, value];
+        if (name === 'strokeDashoffset') {
+          if (DrawSVGPlugin && start !== undefined) {
+            from.drawSVG = reversed ? '100%' : '0%';
+            to.drawSVG = reversed ? '0%' : '100%';
+          } else {
+            if (start !== undefined) from.strokeDashoffset = start;
+            to.strokeDashoffset = end;
+          }
         } else {
-          if (start !== undefined) from.strokeDashoffset = start;
-          to.strokeDashoffset = end;
-        }
-      } else {
-        if (reversed && start !== undefined) [start, end] = [end, start];
-        if (start !== undefined) fromAttrs[name] = start;
-        if (name === 'd' && MorphSVGPlugin) {
-          to.morphSVG = { shape: end };
-        } else {
-          toAttrs[name] = end;
+          if (reversed && start !== undefined) [start, end] = [end, start];
+          if (start !== undefined) fromAttrs[name] = start;
+          if (name === 'd' && MorphSVGPlugin) {
+            to.morphSVG = { shape: end };
+          } else {
+            toAttrs[name] = end;
+          }
         }
       }
-    }
 
-    if (Object.keys(fromAttrs).length) from.attr = fromAttrs;
-    if (Object.keys(toAttrs).length) to.attr = toAttrs;
-    return wrapGsapControls(Object.keys(from).length ? gsap.fromTo(targets, from, to) : gsap.to(targets, to));
+      if (Object.keys(fromAttrs).length) from.attr = fromAttrs;
+      if (Object.keys(toAttrs).length) to.attr = toAttrs;
+      return wrapGsapControls(Object.keys(from).length ? gsap.fromTo(targets, from, to) : gsap.to(targets, to));
+    });
   },
 };

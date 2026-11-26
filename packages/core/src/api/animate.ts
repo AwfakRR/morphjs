@@ -5,6 +5,8 @@ import { resolveTargets } from '../utils/targets';
 import { createNoopControls } from '../utils/controls';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
+import { createDeferredControls } from '../utils/deferred-controls';
+import { prepareStagger } from './stagger';
 
 export interface AnimateOptions extends MorphAnimationOptions {
   spring?: boolean | MorphSpringOptions;
@@ -13,40 +15,6 @@ export interface AnimateOptions extends MorphAnimationOptions {
 }
 
 export type AnimateArg = number | AnimateOptions;
-
-function createDeferredControls(): { controls: MorphControls; resolve: (controls: MorphControls) => void } {
-  let real: MorphControls | null = null;
-  const q: Array<(c: MorphControls) => void> = [];
-  let res: () => void, rej: (err: any) => void;
-  const finished = new Promise<void>((r, e) => { res = r; rej = e; });
-  const run = (fn: (c: MorphControls) => void) => (real ? fn(real) : q.push(fn));
-
-  const controls: MorphControls = {
-    play: () => run(c => c.play()),
-    pause: () => run(c => c.pause()),
-    reverse: () => run(c => c.reverse()),
-    cancel: () => run(c => c.cancel()),
-    finish: () => run(c => c.finish()),
-    restart: () => run(c => c.restart()),
-    commitStyles: () => run(c => c.commitStyles()),
-    seek: (time: number) => run(c => c.seek?.(time)),
-    get progress() { return real?.progress ?? 0; },
-    get currentTime() { return real?.currentTime ?? 0; },
-    get playState() { return real?.playState ?? 'idle'; },
-    finished,
-    then: (onF, onR) => finished.then(onF, onR),
-  };
-
-  return {
-    controls,
-    resolve: (c: MorphControls) => {
-      real = c;
-      c.finished.then(res, rej);
-      q.forEach(fn => fn(c));
-      q.length = 0;
-    },
-  };
-}
 
 /**
  * Animate one or more elements.
@@ -104,49 +72,55 @@ function runAnimation(
   const elements = resolveTargets(targets);
   const animTargets = elements.length > 0 ? elements : targets;
 
-  const startAnimation = () => {
+  const startAnimation = (animationOptions: AnimateOptions) => {
     if (useSvg && adapter.svg) {
-      return adapter.svg(animTargets, properties, opts);
+      return adapter.svg(animTargets, properties, animationOptions);
     }
     if (springOpts && adapter.spring) {
-      return adapter.spring(animTargets, properties, springOpts, opts);
+      return adapter.spring(animTargets, properties, springOpts, animationOptions);
     }
-    return adapter.animate(animTargets, properties, opts);
+    return adapter.animate(animTargets, properties, animationOptions);
+  };
+
+  const pendingDelay = prepareStagger(opts.delay, animTargets);
+  const loadAndAnimate = async ({ resolve, reject }: ReturnType<typeof createDeferredControls>) => {
+    let animationOptions = opts;
+    try {
+      if (pendingDelay) animationOptions = { ...opts, delay: await pendingDelay };
+      await adapter.ensure?.();
+      resolve(startAnimation(animationOptions));
+    } catch (err) {
+      if (defaultSvg) {
+        try {
+          const fallback = resolveAdapter();
+          if (fallback !== adapter) {
+            await fallback.ensure?.();
+            resolve(fallback.animate(animTargets, properties, animationOptions));
+            return;
+          }
+        } catch {
+          // No usable tween adapter.
+        }
+      }
+      if (useSvg) resolve(createNoopControls());
+      else if (pendingDelay) reject(err);
+      console.error('[MorphJS] Deferred animation failed:', err);
+    }
   };
 
   let animControls: MorphControls;
-
-  try {
-    animControls = startAnimation();
-  } catch {
-    const { controls, resolve } = createDeferredControls();
-
-    const loadAndAnimate = async () => {
-      try {
-        if (adapter.ensure) {
-          await adapter.ensure();
-        }
-        resolve(startAnimation());
-      } catch (err) {
-        if (defaultSvg) {
-          try {
-            const fallback = resolveAdapter();
-            if (fallback !== adapter) {
-              await fallback.ensure?.();
-              resolve(fallback.animate(animTargets, properties, opts));
-              return;
-            }
-          } catch {
-            // No usable tween adapter.
-          }
-        }
-        if (useSvg) resolve(createNoopControls());
-        console.error('[MorphJS] Deferred animation failed:', err);
-      }
-    };
-    loadAndAnimate();
-
-    return controls;
+  if (pendingDelay) {
+    const deferred = createDeferredControls();
+    void loadAndAnimate(deferred);
+    animControls = deferred.controls;
+  } else {
+    try {
+      animControls = startAnimation(opts);
+    } catch {
+      const deferred = createDeferredControls();
+      void loadAndAnimate(deferred);
+      return deferred.controls;
+    }
   }
 
   const id = stateManager.register(animControls, targets);
@@ -166,7 +140,7 @@ function runAnimation(
       timestamp: Date.now(),
     });
     stateManager.unregister(id);
-  });
+  }, () => stateManager.unregister(id));
 
   return animControls;
 }
