@@ -445,3 +445,24 @@ it('samples overlapping Anime children at the GSAP parent time in both direction
     parent.cancel();
   }
 });
+
+it('does not inherit the Anime parent delay on the child completion timer', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false }).add({ x: 0 } as any, { x: 100, duration: 1 });
+  const finished = vi.fn();
+  void child.finished.then(finished);
+  const parent = timeline({ autoplay: false, defaults: { delay: 0.25 } })
+    .add(child)
+    .label('handoff')
+    .add(target as any, { x: [0, 100], duration: 1, ease: 'linear' });
+
+  try {
+    parent.seek('handoff');
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1));
+    await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
+    parent.seek(1.75);
+    expect(target.x).toBeCloseTo(50);
+  } finally {
+    parent.cancel();
+  }
+});
