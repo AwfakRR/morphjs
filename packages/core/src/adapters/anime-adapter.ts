@@ -97,17 +97,19 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
  */
 function toAnimeOptions(
   properties: Record<string, any>,
-  options?: MorphAnimationOptions
+  options?: MorphAnimationOptions,
+  usePropertyTiming = false
 ): Record<string, any> {
   const result: Record<string, any> = { ...properties };
   const ease = options?.ease ?? (Array.isArray(properties.ease) ? properties.ease as CubicBezier : undefined);
 
-  if (options?.duration !== undefined) result.duration = options.duration * 1000;
-  const delay = options?.delay;
-  if (typeof delay === 'function') {
+  const duration = options?.duration ?? (usePropertyTiming ? properties.duration : undefined);
+  if (typeof duration === 'number') result.duration = duration * 1000;
+  const delay = options?.delay ?? (usePropertyTiming ? properties.delay : undefined);
+  if (typeof delay === 'function' && options?.delay !== undefined) {
     result.delay = (_target: unknown, index: number, targets: unknown[] | number) =>
       delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
-  } else if (delay !== undefined) {
+  } else if (typeof delay === 'number') {
     result.delay = delay * 1000;
   }
   if (ease !== undefined) result.ease = toAnimeEasing(ease);
@@ -157,14 +159,8 @@ export const animeAdapter: IAnimationAdapter = {
   ): MorphTimeline {
     const anime = getAnimeSync();
 
-    // Build timeline defaults
-    const defaults: Record<string, any> = {};
-    if (options?.defaults?.duration !== undefined) {
-      defaults.duration = options.defaults.duration * 1000;
-    }
-    if (options?.defaults?.ease !== undefined) {
-      defaults.ease = toAnimeEasing(options.defaults.ease);
-    }
+    const { duration, delay, ease } = options?.defaults ?? {};
+    const defaults = toAnimeOptions({}, { duration, delay, ease });
 
     const pauses: Array<{ position: number; callback?: () => void }> = [];
     // Compare checkpoints at the same precision as Anime's playhead getters.
@@ -222,7 +218,7 @@ export const animeAdapter: IAnimationAdapter = {
 
     // Add segments
     for (const seg of segments) {
-      const segOpts = toAnimeOptions(seg.properties, seg.options);
+      const segOpts = toAnimeOptions(seg.properties, seg.options, true);
       tl.add(seg.targets, segOpts, toAnimePosition(seg.offset));
     }
 
@@ -256,7 +252,7 @@ export const animeAdapter: IAnimationAdapter = {
         return controls.playState;
       },
       add(addTargets, addProps, offset?) {
-        const addOpts = toAnimeOptions(addProps);
+        const addOpts = toAnimeOptions(addProps, undefined, true);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
         previousPosition = roundPosition(tl.iterationCurrentTime);
         return this;

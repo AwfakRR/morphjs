@@ -35,7 +35,7 @@ it.each([
   const ease: [number, number, number, number] = [0.2, 0.8, 0.6, 1.4];
   const controls = timeline({
     engine: engine, autoplay: false,
-    defaults: { duration: engine === 'anime' ? 1000 : 1, ...(source === 'defaults' ? { ease } : {}) },
+    defaults: { duration: 1, ...(source === 'defaults' ? { ease } : {}) },
   }).add(target as any, { x: 100, ...(source === 'segment' ? { ease } : {}) });
 
   try {
