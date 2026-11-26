@@ -287,6 +287,31 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
   }
 });
 
+it.each([true, false])('hands off a shared property from an Anime parent tween to its child (prebuilt: %s)', async (prebuilt) => {
+  const target = { x: 10 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [100, 200], duration: 1, ease: 'linear' })
+    .add(target, { x: 300, duration: 1, ease: 'linear' });
+  if (prebuilt) await vi.waitFor(() => expect(child.duration).toBeCloseTo(2));
+  const parent = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' })
+    .add(child);
+
+  try {
+    parent.seek(0.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
+    expect(target.x).toBeCloseTo(50);
+    parent.seek(1.5);
+    expect(target.x).toBeCloseTo(150);
+    parent.seek(2.5);
+    expect(target.x).toBeCloseTo(250);
+    parent.seek(0.25);
+    expect(target.x).toBeCloseTo(25);
+  } finally {
+    parent.cancel();
+  }
+});
+
 it('preserves the original start of a destination-only Anime child after it has rendered', async () => {
   const target = { x: 10 };
   const child = timeline({ autoplay: false })

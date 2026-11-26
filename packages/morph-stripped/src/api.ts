@@ -114,15 +114,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine }),
     adopt: () => {
-      if (!realTl || activeEngine !== 'a') return;
-      parkAnime();
-      // Anime revives composition on seek, but keeps overlap flags from other timelines.
-      for (let anim = realTl._head; anim; anim = anim._next) {
-        for (let tween = anim._head; tween; tween = tween._next) {
-          tween._isOverridden = tween._isOverlapped = 0;
-          tween._changeDuration = tween._updateDuration;
-        }
-      }
+      if (realTl && activeEngine === 'a') parkAnime();
     },
   };
 
@@ -130,8 +122,16 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (activeEngine === 'g') return wrap(realTl, 'g');
     const controls = wrap(realTl, 'a');
     controls.seek = (time) => {
+      if (state.parent && realTl.cancelled) {
+        // Keep the built values, but don't rejoin Anime's global composition on seek.
+        for (let anim = realTl._head; anim; anim = anim._next) {
+          for (let tween = anim._head; tween; tween = tween._next) {
+            tween._composition = 1; // Anime's composition: 'none'
+            tween._changeDuration = tween._updateDuration;
+          }
+        }
+      }
       realTl.seek(realTl.reversed ? realTl.duration - time * 1000 : time * 1000);
-      parkAnime();
     };
     return controls;
   });
