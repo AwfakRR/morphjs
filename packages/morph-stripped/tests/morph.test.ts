@@ -44,7 +44,7 @@ describe('MorphJS Stripped API', () => {
   it('keeps the timeline playhead on the rendered position when reversing', async () => {
     const target = { x: 0 };
     const tl = timeline({ autoplay: false })
-      .add(target as any, { x: [0, 100], duration: 1000, ease: 'linear' }, 0);
+      .add(target as any, { x: [0, 100], duration: 1, ease: 'linear' }, 0);
 
     try {
       await vi.waitFor(() => expect(tl.duration).toBe(1));

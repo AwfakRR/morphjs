@@ -46,9 +46,9 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const buildAnime = (anime: any) => {
     const tl = anime.createTimeline({
       autoplay: opt?.autoplay ?? true,
-      defaults: opt?.defaults ? toAnimeOptions(opt.defaults) : undefined,
+      defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
     });
-    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p), toAnimePosition(s.o)));
+    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p, undefined, true), toAnimePosition(s.o)));
     realTl = tl;
     const controls = wrap(tl, 'a');
     controls.seek = (time) => tl.seek(tl.reversed ? tl.duration - time * 1000 : time * 1000);
@@ -90,7 +90,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
           } else {
             add();
           }
-        } else realTl.add(t, toAnimeOptions(p), toAnimePosition(o));
+        } else realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o));
       } else {
         seq.push({ t, p, o });
       }

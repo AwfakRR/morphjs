@@ -32,7 +32,7 @@ it.each(['defaults', 'segment'] as const)('applies a named Anime timeline ease f
   const ease = 'easeInOutQuad';
   const controls = timeline({
     autoplay: false,
-    defaults: { duration: 1000, ...(source === 'defaults' ? { ease } : {}) },
+    defaults: { duration: 1, ...(source === 'defaults' ? { ease } : {}) },
   }).add(target as any, { opacity: 1, ...(source === 'segment' ? { ease } : {}) });
 
   try {
