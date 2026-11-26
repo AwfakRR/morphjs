@@ -260,8 +260,11 @@ export const gsapAdapter: IAnimationAdapter = {
 
     // SVG draw: use DrawSVGPlugin if available
     if (properties.strokeDashoffset !== undefined && DrawSVGPlugin) {
-      vars.drawSVG = '100%';
-      return wrapGsapControls(gsap.from(targets, { drawSVG: 0, ...vars }));
+      const reversed = options?.direction === 'reverse';
+      return wrapGsapControls(gsap.fromTo(targets,
+        { drawSVG: reversed ? '100%' : '0%' },
+        { ...vars, drawSVG: reversed ? '0%' : '100%' },
+      ));
     }
 
     // SVG attributes: use GSAP's built-in attr plugin

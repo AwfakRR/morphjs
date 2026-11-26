@@ -1,9 +1,6 @@
 import type { MorphTargets, MorphSvgOptions, MorphControls, MorphAnimationOptions } from '../types';
-import { resolveAdapter } from '../router';
-import { stateManager } from '../state';
-import { animationEvents } from '../events';
 import { resolveTargets } from '../utils/targets';
-import { animate } from './animate';
+import { animateSvg } from './animate';
 import { createNoopControls } from './scroll';
 
 /**
@@ -26,10 +23,9 @@ export const svg = {
     if (typeof window === 'undefined') {
       return createNoopControls();
     }
-    
+
     const { d, ...animOptions } = options;
-    const chosen = (options as any).engine || (options as any).adapter || 'anime';
-    return animate(targets, { d }, { ...animOptions, adapter: chosen });
+    return animateSvg(targets, { d }, animOptions);
   },
 
   /**
@@ -52,20 +48,19 @@ export const svg = {
 
     const isReverse = options?.direction === 'reverse';
 
-    elements.forEach(el => {
-      if (el instanceof SVGGeometryElement) {
-        const length = el.getTotalLength ? el.getTotalLength() : 500;
-        el.style.strokeDasharray = `${length}`;
-        el.setAttribute('stroke-dasharray', `${length}`);
-      }
+    const [len] = elements.map(el => {
+      if (typeof SVGGeometryElement === 'undefined' || !(el instanceof SVGGeometryElement)) return 500;
+
+      const length = el.getTotalLength ? el.getTotalLength() : 500;
+      el.style.strokeDasharray = `${length}`;
+      el.setAttribute('stroke-dasharray', `${length}`);
+      return length;
     });
 
-    const first = elements[0];
-    const len = first instanceof SVGGeometryElement && first.getTotalLength ? first.getTotalLength() : 500;
     const from = isReverse ? 0 : len;
     const to = isReverse ? len : 0;
 
-    return animate(elements, { strokeDashoffset: [from, to] }, options);
+    return animateSvg(elements, { strokeDashoffset: [from, to] }, options);
   },
 
   /**
@@ -83,6 +78,6 @@ export const svg = {
       return createNoopControls();
     }
 
-    return animate(targets, attributes, { ...options, adapter: 'anime' });
+    return animateSvg(targets, attributes, options);
   }
 };
