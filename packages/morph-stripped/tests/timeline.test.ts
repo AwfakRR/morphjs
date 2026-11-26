@@ -193,3 +193,25 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
     parent.cancel();
   }
 });
+
+it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as const)('seeks both Anime children sharing a target in a %s parent (prebuilt: %s)', async (engine, prebuilt) => {
+  const target = { x: 0 };
+  const first = timeline({ autoplay: false })
+    .add(target as any, { x: [0, 100], duration: 1, ease: 'linear' });
+  const second = timeline({ autoplay: false })
+    .add(target as any, { x: [100, 0], duration: 1, ease: 'linear' });
+  if (prebuilt) await vi.waitFor(() => expect(first.duration + second.duration).toBeCloseTo(2));
+  const parent = timeline({ engine, autoplay: false }).add(first).add(second);
+
+  try {
+    parent.seek(0.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
+    expect(target.x).toBeCloseTo(50);
+    parent.seek(1.25);
+    expect(target.x).toBeCloseTo(75);
+    parent.seek(0.25);
+    expect(target.x).toBeCloseTo(25);
+  } finally {
+    parent.cancel();
+  }
+});

@@ -73,10 +73,19 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (!realTl) seq.push(run);
     else run();
   };
+  const activateAnime = () => {
+    if (realTl.cancelled) realTl.seek(realTl.currentTime, true, true);
+  };
+  const parkAnime = () => {
+    // Paused clocks must not reserve shared targets in Anime's global composition.
+    if (realTl.paused && !realTl.cancelled) realTl.cancel();
+  };
   const addAnime = (run: () => void) => {
     const { paused, currentTime, reversed } = realTl;
+    activateAnime();
     run();
-    if (!paused) {
+    if (paused) parkAnime();
+    else {
       if (realTl.reversed !== reversed) realTl.alternate();
       realTl.seek(currentTime, true).resume();
     }
@@ -111,7 +120,16 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const deferred = createDeferred(() => ready, () => {
     const controls = wrap(realTl, activeEngine);
     if (activeEngine === 'a') {
-      controls.seek = (time) => realTl.seek(realTl.reversed ? realTl.duration - time * 1000 : time * 1000);
+      const seekAnime = (time: number) => {
+        realTl.seek(time);
+        parkAnime();
+      };
+      controls.seek = (time) => seekAnime(realTl.reversed ? realTl.duration - time * 1000 : time * 1000);
+      controls.finish = () => seekAnime(realTl.duration);
+      controls.play = () => { activateAnime(); realTl.play(); };
+      controls.reverse = () => { activateAnime(); realTl.reverse(); };
+      controls.pause = () => { realTl.pause(); parkAnime(); };
+      controls.cancel = () => { realTl.pause(); controls.seek!(0); };
     }
     return controls;
   });
@@ -146,8 +164,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
           if (activeEngine === 'g' && engine === 'g') {
             realTl.add(tl, p);
             tl.paused(false);
-          } else if (activeEngine === 'a' && engine === 'a') {
-            addAnime(() => { realTl.sync(tl, toAnimePosition(p)); });
           } else {
             const controls = t as MorphTimeline;
             controls.pause();
