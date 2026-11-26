@@ -34,6 +34,35 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('core gestures', () => {
+  it.each(['33.3333', '33.33'])('preserves drag state when CSS reports %s', async (computed) => {
+    const target = new TestElement();
+    vi.stubGlobal('getComputedStyle', vi.fn()
+      .mockReturnValueOnce({ transform: 'none' })
+      .mockReturnValue({ transform: `matrix(1, 0, 0, 1, ${computed}, 0)` }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const drag = { constraints: { right: 33.333333 } };
+    const firstCleanup = gesture(target as unknown as Element, { drag });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 33.333333, 0, 20);
+    send(target, 'pointerup', 33.333333, 0, 25);
+    expect(target.style.transform).toBe('translate(33.333333px, 0px)');
+    firstCleanup();
+
+    const onDragStart = vi.fn();
+    const cleanup = gesture(target as unknown as Element, { drag: { ...drag, snapToOrigin: true }, onDragStart });
+    send(target, 'pointerdown', 33.333333, 0, 30);
+    expect(onDragStart).toHaveBeenCalledWith(expect.any(Event), expect.objectContaining({ offset: { x: 33.333333, y: 0 } }));
+    send(target, 'pointermove', 100, 0, 50);
+    expect(target.style.transform).toBe('translate(33.333333px, 0px)');
+    send(target, 'pointerup', 100, 0, 55);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledWith(33.333333, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.transform).toBe('translate(0px, 0px)');
+    cleanup();
+  });
+
   it('adopts an externally changed translation on rebind', async () => {
     const target = new TestElement();
     let computedTranslation = 'matrix(1, 0, 0, 1, 30, 0)';

@@ -191,7 +191,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
 }
 
 function matchesTranslation(current: number, rendered: number): boolean {
-  return current === rendered || current === Number(Math.fround(rendered).toPrecision(6));
+  return Math.abs(current - rendered) < 0.5;
 }
 
 function readTranslation(el: Element): [number, number] | undefined {

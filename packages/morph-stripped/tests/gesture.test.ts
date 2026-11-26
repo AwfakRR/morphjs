@@ -22,6 +22,52 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('stripped gestures', () => {
+  it.each(['90px', '90.25px'])('preserves drag state when CSS reports %s', async (computed) => {
+    const target = setupCard();
+    vi.stubGlobal('getComputedStyle', vi.fn()
+      .mockReturnValueOnce({ translate: '30px' })
+      .mockReturnValue({ translate: computed }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const drag = { constraints: { right: 60 } };
+    const firstCleanup = gesture('#card', { drag });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 60, 0, 20);
+    send(target, 'pointerup', 60, 0, 25);
+    expect(target.style.translate).toBe('90px 0px');
+    firstCleanup();
+
+    const onDragStart = vi.fn();
+    const cleanup = gesture('#card', { drag: { ...drag, snapToOrigin: true }, onDragStart });
+    send(target, 'pointerdown', 60, 0, 30);
+    expect(onDragStart).toHaveBeenCalledWith(expect.any(Event), expect.objectContaining({ offset: { x: 60, y: 0 } }));
+    send(target, 'pointermove', 100, 0, 50);
+    expect(target.style.translate).toBe('90px 0px');
+    send(target, 'pointerup', 100, 0, 55);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledWith(60, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.translate).toBe('30px 0px');
+    cleanup();
+  });
+
+  it('uses exact matching when a translation includes a percentage', () => {
+    const target = setupCard();
+    vi.stubGlobal('getComputedStyle', vi.fn()
+      .mockReturnValueOnce({ translate: '30px 10%' })
+      .mockReturnValue({ translate: '90.25px 10%' }));
+    const cleanup = gesture('#card', { drag: true });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 60, 0, 20);
+    send(target, 'pointerup', 60, 0, 25);
+    expect(target.style.translate).toBe('90px 10%');
+
+    send(target, 'pointerdown', 60, 0, 30);
+    send(target, 'pointermove', 55, 0, 50);
+    expect(target.style.translate).toBe('85.25px 10%');
+    cleanup();
+  });
+
   it('adopts an externally changed translation on rebind', async () => {
     const target = setupCard();
     let computedTranslation = '30px';

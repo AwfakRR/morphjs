@@ -355,10 +355,15 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
 }
 
 function matchesTranslation(current: string[], rendered: string[]): boolean {
-  return [0, 1, 2].every(i => {
-    const a = current[i] ?? '0px', b = rendered[i] ?? '0px';
-    return a === b || (a.endsWith('px') && b.endsWith('px') && Number(a.slice(0, -2)) === Number(b.slice(0, -2)));
+  const normalize = (axes: string[]) => [0, 1, 2].map(i => {
+    const axis = axes[i] ?? '0px';
+    return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?px$/i.test(axis) ? Number(axis.slice(0, -2)) : axis;
   });
+  const a = normalize(current), b = normalize(rendered);
+  if (a.every(axis => typeof axis === 'number') && b.every(axis => typeof axis === 'number')) {
+    return a.every((axis, i) => Math.abs(axis - b[i]) < 0.5);
+  }
+  return a.every((axis, i) => axis === b[i]);
 }
 
 function parseTranslation(value: string): string[] {
