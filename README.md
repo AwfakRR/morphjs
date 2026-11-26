@@ -172,7 +172,7 @@ No single engine dominates. MorphJS automatically routes each animation to the e
       └────────────┘   └────────────┘   └────────────┘
       • Springs        • Default TL     • ScrollTrigger (pin/scrub)
       • Gestures       • SVG Draw/Attr  • MorphSVG (mismatched points)
-      • CSS Tweens     • Staggering     • Nested Timelines
+      • CSS Tweens     • Staggers       • Nested Timelines
                        • Nested Timelines
       • Basic Scroll   • 100% MIT       • Opt-in ({ engine: 'gsap' })
 ```

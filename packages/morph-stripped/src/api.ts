@@ -34,12 +34,12 @@ export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: Mor
   return createDeferred(loadMotion, (m) => runSpring(m, tgts, props, opt));
 }
 
-async function loadGsapFor(...props: Record<string, any>[]) {
+async function loadGsapFor(props: Record<string, any>) {
   const [gsap] = await Promise.all([
     loadGsapCore(),
-    props.some(p => p.scrollTrigger !== undefined) && loadScrollTrigger(),
-    props.some(p => p.morphSVG !== undefined) && loadMorphSVG(),
-    props.some(p => p.drawSVG !== undefined) && loadDrawSVG(),
+    props.scrollTrigger !== undefined && loadScrollTrigger(),
+    props.morphSVG !== undefined && loadMorphSVG(),
+    props.drawSVG !== undefined && loadDrawSVG(),
   ]);
   return gsap;
 }
@@ -53,10 +53,9 @@ type TimelineState = {
 const timelines = new WeakMap<MorphTimeline, TimelineState>();
 
 export function timeline(opt?: TimelineOptions): MorphTimeline {
-  const seq: Array<{ run: () => void; props?: Record<string, any> }> = [];
+  const seq: Array<() => void> = [];
   let realTl: any = null;
-  const useGsap = opt?.engine === 'gsap';
-  let activeEngine: 'g' | 'a' = useGsap ? 'g' : 'a';
+  let activeEngine: 'g' | 'a' = opt?.engine === 'gsap' ? 'g' : 'a';
   let pending: Promise<void> | undefined;
 
   const enqueue = (run: () => void, load?: Promise<unknown> | false) => {
@@ -69,16 +68,15 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     void next.then(() => { if (pending === next) pending = undefined; }, () => {});
   };
 
-  const step = (run: () => void, props?: Record<string, any>) => {
-    if (!realTl) seq.push({ run, props });
+  const step = (run: () => void) => {
+    if (!realTl) seq.push(run);
     else run();
   };
-  const loadGsapTimeline = () => loadGsapFor(...seq.flatMap(s => s.props ? [s.props] : []));
-  const loadEngine = useGsap
-    ? () => loadGsapTimeline().catch(() => { activeEngine = 'a'; return loadAnime(); })
-    : () => loadAnime().catch(() => { activeEngine = 'g'; return loadGsapTimeline(); });
-
-  const ready = Promise.resolve().then(loadEngine).then((m: any) => {
+  const loadEngine = () => activeEngine === 'g' ? loadGsapCore() : loadAnime();
+  const ready = loadEngine().catch(() => {
+    activeEngine = activeEngine === 'g' ? 'a' : 'g';
+    return loadEngine();
+  }).then((m: any) => {
     if (activeEngine === 'g') {
       const d: Record<string, any> = {};
       if (opt?.defaults?.duration !== undefined) d.duration = opt.defaults.duration;
@@ -93,7 +91,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
         defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
       });
     }
-    seq.splice(0).forEach(s => s.run());
+    seq.splice(0).forEach(run => run());
     return pending;
   });
   const state: TimelineState = {
@@ -163,7 +161,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
           } else {
             enqueue(() => { realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); });
           }
-        }, p);
+        });
       }
       return tlo;
     },

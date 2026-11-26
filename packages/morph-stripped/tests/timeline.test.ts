@@ -48,6 +48,10 @@ it.each(['anime', 'gsap'] as const)('uses labels in builder order and playback o
     expect(target.x).toBeCloseTo(50);
     expect(tl.duration).toBeCloseTo(1.5);
 
+    tl.seek(0.75);
+    expect(tl.currentTime).toBeCloseTo(0.75);
+    expect(target.x).toBeCloseTo(25);
+
     tl.addLabel('outro', 'intro+=1');
     tl.play('outro');
     tl.pause();
