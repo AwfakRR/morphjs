@@ -140,7 +140,36 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     next.finish();
     await next.finished;
     expect(marker.style.transform).toBe(`translate(40px,60px) ${offset} rotate(90deg) ${linear}`);
-    expect(getComputedStyle).toHaveBeenCalledOnce();
+    expect(getComputedStyle).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['inline', 'stylesheet'])('resolves %s centering again after the marker resizes', async source => {
+    const { marker, target } = browser();
+    const inline = source === 'inline' ? 'translate(-50%, -50%) scale(4, 1)' : '';
+    marker.style.transform = inline;
+    let width = 72, height = 32;
+    vi.stubGlobal('window', {
+      getComputedStyle: () => ({
+        transform: marker.style.transform === inline
+          ? `matrix(4, 0, 0, 1, ${-width / 2}, ${-height / 2})`
+          : 'none',
+      }),
+    });
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false, autoRotate: true };
+    const first = svg.motionPath(target, track, { ...options, autoRotate: source === 'stylesheet' });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe(source === 'inline'
+      ? `translate(40px,60px) ${inline}`
+      : 'translate(40px,60px) translate(-36px,-16px) rotate(90deg) matrix(4,0,0,1,0,0)');
+
+    width = 128;
+    height = 58;
+    const next = svg.motionPath(target, track, options);
+    next.finish();
+    await next.finished;
+    expect(marker.style.transform).toBe('translate(40px,60px) translate(-64px,-29px) rotate(90deg) matrix(4,0,0,1,0,0)');
   });
 
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {

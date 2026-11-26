@@ -3,7 +3,7 @@ import { resolveTargets } from '../utils/targets';
 import { createNoopControls } from '../utils/controls';
 import { animateSvg } from './animate';
 
-const pathTransforms = new WeakMap<CSSStyleDeclaration, { base: string; computed: string; value: string }>();
+const pathTransforms = new WeakMap<CSSStyleDeclaration, { inline: string; priority: string; value: string }>();
 
 function splitPathTransform(base: string, computed: string, autoRotate?: boolean) {
   if (autoRotate && computed.startsWith('matrix')) {
@@ -61,13 +61,25 @@ export const svg = {
         const style = (element as HTMLElement).style;
         if (!style) return [];
         const previous = pathTransforms.get(style);
-        const inline = style.transform;
+        const value = style.transform;
+        const { inline, priority } = previous?.value === value
+          ? previous
+          : { inline: value, priority: style.getPropertyPriority?.('transform') ?? '' };
+        const restore = inline !== value;
+        if (restore) {
+          if (priority) style.setProperty('transform', inline, priority);
+          else style.transform = inline;
+        }
+        let computed: string;
+        try {
+          computed = window.getComputedStyle?.(element).transform ?? '';
+        } finally {
+          if (restore) style.transform = value;
+        }
         const composable = inline.includes('(') && !/\b(?:var|env|attr)\(/i.test(inline);
-        const saved = previous?.value === inline ? previous : undefined;
-        const computed = saved?.computed ?? window.getComputedStyle?.(element).transform ?? '';
-        const original = saved?.base ?? (composable ? inline : computed);
+        const original = composable ? inline : computed;
         const base = original === 'none' ? '' : original;
-        return [{ style, base, computed, ...splitPathTransform(base, computed, autoRotate) }];
+        return [{ style, inline, priority, ...splitPathTransform(base, computed, autoRotate) }];
       });
 
       let progress = 0;
@@ -86,9 +98,9 @@ export const svg = {
             const angle = Math.atan2(after.y - before.y, after.x - before.x) * 180 / Math.PI;
             rotation = ` rotate(${angle}deg)`;
           }
-          for (const { style, base, computed, offset, linear } of markers) {
+          for (const { style, inline, priority, offset, linear } of markers) {
             style.transform = translation + offset + rotation + linear;
-            pathTransforms.set(style, { base, computed, value: style.transform });
+            pathTransforms.set(style, { inline, priority, value: style.transform });
           }
         },
       };
