@@ -46,8 +46,9 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
   }
   const pendingTimes = new WeakMap<object, { time: number }>();
   const driverOf = (track: any) => track.animation ?? track;
+  const isJs = (driver: any) => typeof driver.tick === 'function';
   const delayOf = (driver: any) =>
-    typeof driver.tick === 'function' ? (driver.options?.delay ?? 0) / 1000 : 0;
+    isJs(driver) ? (driver.options?.delay ?? 0) / 1000 : 0;
   const signedDelay = (track: any, delay: number) => track.speed < 0 ? -delay : delay;
   const readTime = (track: any, driver = driverOf(track), delay = delayOf(driver)) => {
     if (delay && track.state === 'paused' && driver.holdTime != null) {
@@ -71,8 +72,8 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
     const resuming = !backward && tracks.some((track: any) => track.state === 'paused');
     for (const track of tracks) {
       const { speed, state } = track;
-      if (resuming && state === 'finished') continue;
       const driver = driverOf(track);
+      if (resuming && state === 'finished' && isJs(driver)) continue;
       const delay = delayOf(driver);
       const time = legacyEnds?.get(track) ?? readTime(track, driver, delay);
       legacyEnds?.delete(track);
@@ -91,7 +92,7 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
     pause: () => {
       for (const track of tracks) {
         const driver = driverOf(track);
-        if (driver.state === 'paused' || driver.state === 'finished') continue;
+        if (isJs(driver) && (driver.state === 'paused' || driver.state === 'finished')) continue;
         // Motion 11 pauses on sampled time. Keep the raw clock, including any remaining delay.
         const rawTime = delayOf(driver) && !driver.updateTime && driver.state === 'running' &&
           driver.driver && driver.startTime != null
@@ -114,7 +115,10 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
     seek: (time: number) => {
       for (const track of tracks) {
         legacyEnds?.delete(track);
-        writeTime(track, time);
+        const driver = driverOf(track);
+        // Motion 11 needs an explicit hold to resume a seek from a finished JS track.
+        if (driver.state === 'finished' && isJs(driver) && !driver.updateTime) track.pause();
+        writeTime(track, time, delayOf(driver));
       }
     },
     get duration() {

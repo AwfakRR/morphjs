@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { animate } from '../src/index';
-import { loadMotion } from '../src/engine';
+import { loadMotion, wrap } from '../src/engine';
 
 beforeAll(async () => {
   vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
@@ -29,6 +29,17 @@ function makeTween() {
   });
   return { target, controls };
 }
+
+it('pauses native playback even when Motion retains its finished state after replay', () => {
+  const pause = vi.fn();
+  const track = { state: 'finished', animation: { state: 'finished' }, pause };
+  const group = { state: 'finished', animations: [track] };
+  const controls = wrap(group, 'm');
+
+  controls.pause();
+
+  expect(pause).toHaveBeenCalledOnce();
+});
 
 it('seeks a paused Motion tween in seconds and reports its playhead', async () => {
   const { target, controls } = makeTween();

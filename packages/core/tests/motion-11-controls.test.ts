@@ -137,6 +137,27 @@ describe.each([
     }
   });
 
+  it('resumes from a seek after a JS tween finishes', async () => {
+    const target = { value: 0 };
+    const controls = wrapControls(motion.animate(target as any, { value: [0, 100] }, {
+      delay: 0.5, duration: 1, ease: 'linear',
+    }));
+    try {
+      await vi.advanceTimersByTimeAsync(1600);
+      expect(target.value).toBe(100);
+
+      controls.pause();
+      controls.seek?.(0.5);
+      controls.play();
+      await vi.advanceTimersByTimeAsync(128);
+
+      expect(target.value).toBeGreaterThan(60);
+      expect(target.value).toBeLessThan(66);
+    } finally {
+      controls.cancel();
+    }
+  });
+
   it.each(['play', 'reverse'] as const)('keeps a finished delayed track at its endpoint before %s', async (resume) => {
     await vi.advanceTimersByTimeAsync(3000);
     const target = { short: 0, long: 0 };
