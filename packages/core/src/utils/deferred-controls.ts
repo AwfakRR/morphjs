@@ -1,4 +1,5 @@
 import type { MorphControls } from '../types';
+import { notifyControlsCanceled } from './controls';
 
 export function createDeferredControls() {
   let real: MorphControls | null = null;
@@ -11,7 +12,10 @@ export function createDeferredControls() {
     play: () => run(c => c.play()),
     pause: () => run(c => c.pause()),
     reverse: () => run(c => c.reverse()),
-    cancel: () => run(c => c.cancel()),
+    cancel: () => {
+      run(c => c.cancel());
+      notifyControlsCanceled(controls);
+    },
     finish: () => run(c => c.finish()),
     restart: () => run(c => c.restart()),
     commitStyles: () => run(c => c.commitStyles()),
