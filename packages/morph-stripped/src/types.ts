@@ -61,7 +61,11 @@ export interface MorphControls {
 
 export interface MorphTimeline extends MorphControls {
   add(targets: MorphTargets, properties: Record<string, any>, offset?: string | number): MorphTimeline;
+  add(child: MorphTimeline, offset?: string | number): MorphTimeline;
   label(name: string, offset?: string | number): MorphTimeline;
+  addLabel(name: string, offset?: string | number): MorphTimeline;
+  seek(position: string | number): void;
+  play(position?: string | number): void;
   addPause(offset?: string | number, callback?: () => void): MorphTimeline;
   duration: number;
 }

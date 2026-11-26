@@ -8,7 +8,7 @@
 *Combines the GPU spring/gesture power of **Motion.js**, the lightweight timeline/SVG magic of **Anime.js v4**, and the heavy-duty specialist muscle of **GSAP v3**.*
 
 [![Version](https://img.shields.io/npm/v/morphjs?style=flat-square&color=6366f1)](https://www.npmjs.com/package/morphjs)
-[![Bundle Size](https://img.shields.io/badge/bundle%20size-~9%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
+[![Bundle Size](https://img.shields.io/badge/bundle%20size-~12%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
 [![AI Agents](https://img.shields.io/badge/AI%20Agents-AGENTS.md-6366f1?style=flat-square)](AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -40,7 +40,7 @@ MorphJS comes in two editions tailored to your architecture:
 
 1. **`morph-stripped`** (*Recommended*)  
    The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
-   - **Size:** `~30 KB raw` / `~9 KB gzip` (ESM)
+   - **Size:** `~38 KB raw` / `~12 KB gzip` (ESM)
 2. **`morphjs`** (Core)  
    The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
    - **Size:** `~35 KB raw` / `~9 KB gzip`
@@ -134,6 +134,26 @@ Scopes also track `spring`, `timeline`, `scroll`, and `svg` calls. Use `scope.ad
 - **Vue:** Call `useMorph()` in setup to get animation methods that clean up on unmount.
 - **Svelte:** Call `morphScope()` during component initialization to revert the scope on destroy.
 
+### Nested timelines and labels in `morph-stripped`
+
+```ts
+const reveal = timeline({ autoplay: false })
+  .add('.card', { opacity: [0, 1], duration: 1 });
+
+const sequence = timeline({ autoplay: false })
+  .label('intro', 0.5) // addLabel() is an alias
+  .add(reveal, 'intro+=0.25');
+
+sequence.seek('intro+=0.75'); // 1.25 s on the parent, halfway through reveal
+// sequence.play('intro'); // start playing from the label
+```
+
+Numeric positions and label offsets are in seconds. The parent drives a nested
+timeline's playhead; a child can be attached to only one parent. Build the
+child before adding it, and define labels on the timeline that uses them.
+Nesting and labels work with the default Anime.js engine and with `engine: 'gsap'`.
+Percentage offsets (such as `+=50%`) are only supported within the same engine; for mixed engines use an absolute or label offset (`add()` throws if both engines are known, otherwise it logs an error and skips the child once they resolve).
+
 ---
 
 ## 🏗️ Architecture: Balanced & Agnostic
@@ -153,7 +173,8 @@ No single engine dominates. MorphJS automatically routes each animation to the e
       └────────────┘   └────────────┘   └────────────┘
       • Springs        • Default TL     • ScrollTrigger (pin/scrub)
       • Gestures       • SVG Draw/Attr  • MorphSVG (mismatched points)
-      • CSS Tweens     • Staggers       • Pro Nested Timelines
+      • CSS Tweens     • Staggers       • Nested Timelines
+                       • Nested Timelines
       • Basic Scroll   • 100% MIT       • Opt-in ({ engine: 'gsap' })
 ```
 
