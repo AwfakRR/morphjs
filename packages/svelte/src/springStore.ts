@@ -34,7 +34,7 @@ export function springStore(
           proxy as any,
           { val: nextValue },
           {
-            spring: springOptions,
+            spring: springOptions ?? true,
             onUpdate: () => {
               currentValue = proxy.val;
               store.set(currentValue);

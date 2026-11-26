@@ -16,7 +16,7 @@ export function spring(
   // Delegates to animate() with spring option
   return animate(targets, properties, {
     ...animationOptions,
-    spring: springOptions,
+    spring: springOptions ?? true,
     adapter: 'motion' // Forces motion adapter for springs
   });
 }
