@@ -229,21 +229,25 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
   };
 }
 
+type DragState = { base?: ReturnType<typeof readTranslation>; x: number; y: number };
+const dragStates = new WeakMap<Element, DragState>();
+
 function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): () => void {
   const { constraints, momentum, snapToOrigin } = typeof options.drag === 'object' ? options.drag : {};
   const clamp = (value: number, min?: number, max?: number) =>
     Math.min(max ?? Infinity, Math.max(min ?? -Infinity, value));
-  const x = { position: 0, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.left, max: constraints?.right };
-  const y = { position: 0, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.top, max: constraints?.bottom };
+  const state: DragState = dragStates.get(el) ?? { x: 0, y: 0 };
+  dragStates.set(el, state);
+  const x = { key: 'x' as const, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.left, max: constraints?.right };
+  const y = { key: 'y' as const, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.top, max: constraints?.bottom };
   let pointerId: number | undefined;
   let lastMove = 0;
   let release = 0;
-  let base: string[] | undefined;
   const animations: Array<{ stop(): void }> = [];
 
   const render = () => {
-    const [left = '0px', top = '0px', z] = base ?? [];
-    el.style.translate = `${addTranslation(left, x.position)} ${addTranslation(top, y.position)}${z ? ` ${z}` : ''}`;
+    const [left = '0px', top = '0px', z] = state.base ?? [];
+    el.style.translate = `${addTranslation(left, state.x)} ${addTranslation(top, state.y)}${z ? ` ${z}` : ''}`;
   };
   const stop = () => {
     release++;
@@ -252,7 +256,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   const info = (e: PointerEvent, dx = 0, dy = 0) => ({
     point: { x: e.clientX, y: e.clientY },
     delta: { x: dx, y: dy },
-    offset: { x: x.position, y: y.position },
+    offset: { x: state.x, y: state.y },
     velocity: { x: x.velocity, y: y.velocity },
   });
 
@@ -260,10 +264,10 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const e = event as PointerEvent;
     if (pointerId !== undefined) return;
     stop();
-    base ??= readTranslation(el);
+    state.base ??= readTranslation(el);
     pointerId = e.pointerId;
     for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
-      axis.from = axis.position;
+      axis.from = state[axis.key];
       axis.start = axis.previous = point;
       axis.velocity = 0;
     }
@@ -280,7 +284,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     for (const [axis, point, delta] of [[x, e.clientX, dx], [y, e.clientY, dy]] as const) {
       axis.velocity = elapsed > 0 && elapsed <= 100 ? delta * 1000 / elapsed : 0;
       axis.previous = point;
-      axis.position = clamp(axis.from + point - axis.start, axis.min, axis.max);
+      state[axis.key] = clamp(axis.from + point - axis.start, axis.min, axis.max);
     }
     lastMove = e.timeStamp;
     render();
@@ -300,17 +304,18 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     loadMotion().then(({ animate }: typeof import('motion')) => {
       if (id !== release) return;
       for (const axis of [x, y]) {
+        const position = state[axis.key];
         const power = 0.8;
-        const destination = snapToOrigin ? 0 : clamp(axis.position + power * axis.velocity, axis.min, axis.max);
-        if (destination === axis.position) continue;
+        const destination = snapToOrigin ? 0 : clamp(position + power * axis.velocity, axis.min, axis.max);
+        if (destination === position) continue;
         const onUpdate = (position: number) => {
           if (id !== release) return;
-          axis.position = snapToOrigin ? position : clamp(position, axis.min, axis.max);
+          state[axis.key] = snapToOrigin ? position : clamp(position, axis.min, axis.max);
           render();
         };
         animations.push(snapToOrigin
-          ? animate(axis.position, 0, { type: 'spring', stiffness: 300, damping: 30, onUpdate })
-          : animate(axis.position, destination, {
+          ? animate(position, 0, { type: 'spring', stiffness: 300, damping: 30, onUpdate })
+          : animate(position, destination, {
             type: 'inertia', velocity: axis.velocity, power, min: axis.min, max: axis.max,
             modifyTarget: () => destination, onUpdate,
           }));
@@ -319,7 +324,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
       if (id !== release) return;
       stop();
       if (!snapToOrigin) return;
-      x.position = y.position = 0;
+      state.x = state.y = 0;
       render();
     });
   };

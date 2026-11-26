@@ -34,6 +34,38 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('core gestures', () => {
+  it('keeps the original bounds and snap destination when a dragged element is rebound', async () => {
+    const target = new TestElement();
+    const computedStyle = vi.fn()
+      .mockReturnValueOnce({ transform: 'matrix(1, 0, 0, 1, 30, -12)' })
+      .mockReturnValue({ transform: 'matrix(1, 0, 0, 1, 90, -12)' });
+    vi.stubGlobal('getComputedStyle', computedStyle);
+    animate.mockReturnValue({ stop: vi.fn() });
+    const options = { drag: { constraints: { left: -60, right: 60 }, snapToOrigin: true }, onDragStart: vi.fn() };
+    const firstCleanup = gesture(target as unknown as Element, options);
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 100, 0, 20);
+    expect(target.style.transform).toBe('translate(90px, -12px)');
+    send(target, 'pointerup', 100, 0, 25);
+    firstCleanup();
+
+    const secondCleanup = gesture(target as unknown as Element, options);
+    send(target, 'pointerdown', 100, 0, 30);
+    send(target, 'pointermove', 130, 0, 50);
+    expect(target.style.transform).toBe('translate(90px, -12px)');
+    expect(options.onDragStart).toHaveBeenLastCalledWith(expect.any(Event), expect.objectContaining({
+      offset: { x: 60, y: 0 },
+    }));
+    send(target, 'pointerup', 130, 0, 55);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledWith(60, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.transform).toBe('translate(30px, -12px)');
+    secondCleanup();
+  });
+
   it.each(['never', 'always'] as const)('snaps back to the existing translation with reducedMotion: %s', async (reducedMotion) => {
     configure({ reducedMotion });
     const target = new TestElement();

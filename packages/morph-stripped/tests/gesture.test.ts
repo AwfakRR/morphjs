@@ -22,6 +22,38 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('stripped gestures', () => {
+  it('keeps the original bounds and snap destination when a dragged element is rebound', async () => {
+    const target = setupCard();
+    const computedStyle = vi.fn()
+      .mockReturnValueOnce({ translate: '30px -12px' })
+      .mockReturnValue({ translate: '90px -12px' });
+    vi.stubGlobal('getComputedStyle', computedStyle);
+    animate.mockReturnValue({ stop: vi.fn() });
+    const options = { drag: { constraints: { left: -60, right: 60 }, snapToOrigin: true }, onDragStart: vi.fn() };
+    const firstCleanup = gesture('#card', options);
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 100, 0, 20);
+    expect(target.style.translate).toBe('90px -12px');
+    send(target, 'pointerup', 100, 0, 25);
+    firstCleanup();
+
+    const secondCleanup = gesture('#card', options);
+    send(target, 'pointerdown', 100, 0, 30);
+    send(target, 'pointermove', 130, 0, 50);
+    expect(target.style.translate).toBe('90px -12px');
+    expect(options.onDragStart).toHaveBeenLastCalledWith(expect.any(Event), expect.objectContaining({
+      offset: { x: 60, y: 0 },
+    }));
+    send(target, 'pointerup', 130, 0, 55);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledWith(60, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.translate).toBe('30px -12px');
+    secondCleanup();
+  });
+
   it('snaps back to the existing translation rather than to zero', async () => {
     const target = setupCard();
     const onDragEnd = vi.fn();
