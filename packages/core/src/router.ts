@@ -22,7 +22,7 @@ function detectRequiredCapability(options: any): AdapterCapability {
   if (options?.gesture) return 'gesture';
   if (options?.timeline) return 'timeline';
   if (options?.svg) return 'svg';
-  if (options?.stagger && (options.stagger.grid || options.stagger.jitter)) return 'stagger';
+  if (options?.stagger && (options.stagger.grid || options.stagger.jitter !== undefined)) return 'stagger';
   return 'tween';
 }
 

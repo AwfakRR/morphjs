@@ -115,7 +115,12 @@ function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOpt
   const vars: Record<string, any> = { ...properties };
 
   if (options?.duration !== undefined) vars.duration = options.duration;
-  if (options?.delay !== undefined) vars.delay = options.delay;
+  const delay = options?.delay;
+  if (typeof delay === 'function') {
+    vars.delay = (index: number, _target: unknown, targets: unknown[]) => delay(index, targets.length);
+  } else if (delay !== undefined) {
+    vars.delay = delay;
+  }
   if (options?.ease !== undefined) vars.ease = toGsapEasing(options.ease);
   if (options?.repeat !== undefined) vars.repeat = options.repeat === Infinity ? -1 : options.repeat;
   if (options?.direction === 'alternate' || options?.direction === 'alternate-reverse') vars.yoyo = true;

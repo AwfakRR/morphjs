@@ -10,7 +10,7 @@ export type EasingValue = string | EasingFunction | CubicBezier;
 // Animation options
 export interface MorphAnimationOptions {
   duration?: number;
-  delay?: number;
+  delay?: number | ((index: number, total: number) => number);
   ease?: EasingValue;
   repeat?: number;
   direction?: 'normal' | 'reverse' | 'alternate' | 'alternate-reverse';

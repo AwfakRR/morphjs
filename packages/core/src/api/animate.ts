@@ -5,6 +5,7 @@ import { resolveTargets } from '../utils/targets';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { createDeferredControls } from '../utils/deferred-controls';
+import { prepareStagger } from './stagger';
 
 export interface AnimateOptions extends MorphAnimationOptions {
   spring?: boolean | MorphSpringOptions;
@@ -47,34 +48,35 @@ export function animate(
   const elements = resolveTargets(targets);
   const animTargets = elements.length > 0 ? elements : targets;
 
+  const start = (animationOptions: AnimateOptions) =>
+    springOpts && adapter.spring
+      ? adapter.spring(animTargets, properties, springOpts, animationOptions)
+      : adapter.animate(animTargets, properties, animationOptions);
+  const pendingDelay = prepareStagger(opts.delay, animTargets);
   let animControls: MorphControls;
 
-  try {
-    if (springOpts && adapter.spring) {
-      animControls = adapter.spring(animTargets, properties, springOpts, opts);
-    } else {
-      animControls = adapter.animate(animTargets, properties, opts);
+  if (pendingDelay) {
+    const deferred = createDeferredControls();
+    void Promise.all([pendingDelay, adapter.ensure?.()])
+      .then(([delay]) => deferred.resolve(start({ ...opts, delay })))
+      .catch(deferred.reject);
+    animControls = deferred.controls;
+  } else {
+    try {
+      animControls = start(opts);
+    } catch {
+      const { controls, resolve } = createDeferredControls();
+      const loadAndAnimate = async () => {
+        try {
+          await adapter.ensure?.();
+          resolve(start(opts));
+        } catch (err) {
+          console.error('[MorphJS] Deferred animation failed:', err);
+        }
+      };
+      loadAndAnimate();
+      return controls;
     }
-  } catch {
-    const { controls, resolve } = createDeferredControls();
-
-    const loadAndAnimate = async () => {
-      try {
-        if (adapter.ensure) {
-          await adapter.ensure();
-        }
-        if (springOpts && adapter.spring) {
-          resolve(adapter.spring(animTargets, properties, springOpts, opts));
-        } else {
-          resolve(adapter.animate(animTargets, properties, opts));
-        }
-      } catch (err) {
-        console.error('[MorphJS] Deferred animation failed:', err);
-      }
-    };
-    loadAndAnimate();
-
-    return controls;
   }
 
   const id = stateManager.register(animControls, targets);
@@ -94,7 +96,7 @@ export function animate(
       timestamp: Date.now(),
     });
     stateManager.unregister(id);
-  });
+  }, () => stateManager.unregister(id));
 
   return animControls;
 }
