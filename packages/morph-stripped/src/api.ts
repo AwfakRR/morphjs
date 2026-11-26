@@ -53,7 +53,7 @@ type TimelineState = {
   native: () => { tl: any; engine: 'g' | 'a'; anime: AnimeModule };
   adopt: () => void;
   mount: (host: any, start: number) => number;
-  syncGsap: () => void;
+  preview?: () => void;
   parent?: TimelineState;
 };
 const timelines = new WeakMap<MorphTimeline, TimelineState>();
@@ -89,7 +89,6 @@ function withAnimeStart(value: any, from: (target: object) => unknown): any {
 export function timeline(opt?: TimelineOptions): MorphTimeline {
   const seq: Array<() => void> = [];
   const tracks: AnimeTrack[] = [];
-  const gsapSamples: Array<() => void> = [];
   const firstProperties = new WeakMap<object, Map<string, number>>();
   let anime: AnimeModule;
   let mixedHost: any;
@@ -100,6 +99,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   let activeEngine: 'g' | 'a' = opt?.engine === 'gsap' ? 'g' : 'a';
   let autoplay = opt?.autoplay !== false;
   let pending: Promise<void> | undefined;
+  let previewed = false;
 
   const enqueue = (run: () => void, load?: Promise<unknown> | false) => {
     if (!pending && !load) {
@@ -116,7 +116,20 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     else run();
   };
   const control = (run: () => void) => step(() => enqueue(run));
-  const syncGsap = () => { for (const sample of gsapSamples) sample(); };
+  const restoreGsapFrameOnMove = () => {
+    if (previewed) return;
+    previewed = true;
+    const render = realTl.render;
+    realTl.render = (time: number, suppressEvents?: boolean, force?: boolean) => {
+      const previous = realTl.totalTime();
+      if (Math.max(0, Math.min(time, realTl.totalDuration())) !== previous) {
+        realTl.render = render;
+        previewed = false;
+        render.call(realTl, previous, true, true);
+      }
+      return render.call(realTl, time, suppressEvents, force);
+    };
+  };
   const addAnime = (run: () => void) => {
     const { paused, currentTime, duration, reversed } = realTl;
     run();
@@ -166,7 +179,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const state: TimelineState = {
     ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine, anime }),
-    syncGsap,
     adopt: () => {
       if (realTl && activeEngine === 'a' && !realTl.cancelled) realTl.cancel();
     },
@@ -180,15 +192,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   };
 
   const deferred = createDeferred(() => ready, () => {
-    if (activeEngine === 'g') {
-      const controls = wrap(realTl, 'g');
-      controls.seek = time => { realTl.seek(time); syncGsap(); };
-      for (const key of ['restart', 'finish'] as const) {
-        const run = controls[key];
-        controls[key] = () => { run(); syncGsap(); };
-      }
-      return controls;
-    }
+    if (activeEngine === 'g') return wrap(realTl, 'g');
     const controls = wrap(realTl, 'a');
     controls.seek = (time) => {
       if (!segment && state.parent) return;
@@ -197,6 +201,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
         ? segment.start + Math.max(0, Math.min(segment.duration, time * 1000))
         : time * 1000;
       host.seek(host.reversed ? host.duration - position : position);
+      state.preview?.();
     };
     for (const key of ['play', 'pause', 'reverse', 'cancel', 'restart', 'finish'] as const) {
       const run = controls[key];
@@ -240,7 +245,6 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
           } else if (activeEngine === 'g' && engine === 'g') {
             realTl.add(tl, p);
             tl.paused(false);
-            gsapSamples.push(child.syncGsap);
           } else {
             const controls = t as MorphTimeline;
             if (engine === 'a') {
@@ -249,13 +253,14 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
                 : (mixedHost ??= animeModule.createTimeline({ autoplay: false }));
               if (isolated) {
                 const duration = child.mount(host, 0);
-                realTl.to({}, { duration: duration / 1000 }, p);
-                const tween = realTl.recent();
-                gsapSamples.push(() => {
-                  const time = tween.progress() * duration;
-                  if (host.currentTime !== time) host.seek(time);
-                });
-                realTl.eventCallback('onUpdate', syncGsap);
+                const clock = {
+                  get progress() { return 0; },
+                  set progress(progress: number) { host.seek(progress * duration); },
+                };
+                realTl.fromTo(clock, { progress: 0 }, {
+                  progress: 1, duration: duration / 1000, ease: 'none', immediateRender: false, lazy: false,
+                }, p);
+                child.preview = restoreGsapFrameOnMove;
               } else {
                 const clock = {
                   get time() { return 0; },

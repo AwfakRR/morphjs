@@ -619,3 +619,29 @@ it.each(['seek', 'nested seek', 'play'] as const)('restores a completed percenta
     parent.cancel();
   }
 });
+
+it('hands off a percentage-positioned Anime child to a later GSAP tween on the same target', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add(child, '+=50%')
+    .add(target, { x: 200, duration: 1, ease: 'none' })
+    .add({ x: 0 }, { x: 100, duration: 2 });
+
+  try {
+    parent.seek(2);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(2));
+    expect(target.x).toBeCloseTo(150);
+    parent.seek(1.75);
+    expect(target.x).toBeCloseTo(125);
+    parent.seek(4);
+    expect(target.x).toBeCloseTo(200);
+    child.seek(0.25);
+    expect(target.x).toBeCloseTo(25);
+    parent.seek(3);
+    expect(target.x).toBeCloseTo(200);
+  } finally {
+    parent.cancel();
+  }
+});
