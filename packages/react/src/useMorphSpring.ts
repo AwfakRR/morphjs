@@ -17,16 +17,21 @@ interface SpringAnimation {
 export function useMorphSpring(initialValue: number, springOptions?: MorphSpringOptions) {
   const [currentValue, setCurrentValue] = useState(initialValue);
   const springRef = useRef<SpringAnimation>({ proxy: { val: initialValue }, target: initialValue });
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    const previous = springRef.current;
-    springRef.current = { proxy: { val: previous.proxy.val } };
-    previous.controls?.cancel();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const previous = springRef.current;
+      springRef.current = { proxy: { val: previous.proxy.val } };
+      previous.controls?.cancel();
+    };
   }, []);
 
   const setTarget = useCallback(
     (nextValue: number) => {
-      if (typeof window === 'undefined') return;
+      if (typeof window === 'undefined' || !mountedRef.current) return;
       const previous = springRef.current;
       if (previous.target === nextValue) return;
 

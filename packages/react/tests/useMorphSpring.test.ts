@@ -97,6 +97,8 @@ describe('useMorphSpring', () => {
     await act(() => vi.advanceTimersByTimeAsync(64));
     act(() => renderer!.unmount());
     renderer = undefined;
+    act(() => read()[1](200));
+    expect(spring).toHaveBeenCalledOnce();
     expect(cancel).toHaveBeenCalledOnce();
 
     const [proxy, , , options] = spring.mock.calls[0];
