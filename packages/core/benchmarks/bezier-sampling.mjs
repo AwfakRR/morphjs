@@ -31,7 +31,8 @@ for (const edition of ['core', 'morph-stripped']) {
         await setImmediate();
       }
       controls.seek(0.5);
-      if (Math.abs(targets.at(-1).value0 - 102.49903) > 0.001) {
+      const value = targets.at(-1).value0;
+      if (!Number.isFinite(value) || Math.abs(value - 102.49903) > 0.001) {
         throw new Error(`${engine} did not render the tuple ease`);
       }
 
