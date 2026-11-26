@@ -129,9 +129,9 @@ export function toAnimePosition(offset?: string | number): string | number | und
 
 const gmap: Record<string, string> = {
   linear: 'none', easeIn: 'power1.in', easeOut: 'power1.out', easeInOut: 'power1.inOut',
-  easeInQuad: 'power2.in', easeOutQuad: 'power2.out', easeInOutQuad: 'power2.inOut',
-  easeInCubic: 'power3.in', easeOutCubic: 'power3.out', easeInOutCubic: 'power3.inOut',
-  easeInQuart: 'power4.in', easeOutQuart: 'power4.out', easeInOutQuart: 'power4.inOut',
+  easeInQuad: 'power1.in', easeOutQuad: 'power1.out', easeInOutQuad: 'power1.inOut',
+  easeInCubic: 'power2.in', easeOutCubic: 'power2.out', easeInOutCubic: 'power2.inOut',
+  easeInQuart: 'power3.in', easeOutQuart: 'power3.out', easeInOutQuart: 'power3.inOut',
   easeOutElastic: 'elastic.out(1, 0.3)', easeOutBounce: 'bounce.out', easeInBack: 'back.in(1.7)', easeOutBack: 'back.out(1.7)',
 };
 
