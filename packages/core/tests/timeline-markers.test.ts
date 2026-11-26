@@ -256,9 +256,11 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
 
 it('stops at an Anime pause at zero without stopping there again on resume', async () => {
   const onPause = vi.fn();
+  const onBegin = vi.fn();
   const tl = timeline({ engine: 'anime', autoplay: false, defaults: { duration: 1 } })
-    .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
-    .addPause(0, onPause);
+    .add({ value: 0 } as unknown as MorphTargets, { value: 100, duration: 0, onBegin }, 0)
+    .addPause(0, onPause)
+    .add({ value: 0 } as unknown as MorphTargets, { value: 100 });
 
   try {
     tl.play();
@@ -266,11 +268,13 @@ it('stops at an Anime pause at zero without stopping there again on resume', asy
     expect(onPause).toHaveBeenCalledOnce();
     expect(tl.currentTime).toBe(0);
     expect(tl.playState).toBe('paused');
+    expect(onBegin).not.toHaveBeenCalled();
 
     tl.play();
     await vi.advanceTimersByTimeAsync(1000);
     expect(tl.playState).toBe('finished');
     expect(onPause).toHaveBeenCalledOnce();
+    expect(onBegin).toHaveBeenCalledOnce();
   } finally {
     tl.cancel();
   }

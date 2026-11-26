@@ -203,6 +203,12 @@ export const animeAdapter: IAnimationAdapter = {
         tl.pause().seek(time + direction * (previousPosition - framePosition), true);
         previousPosition = checkpoint;
         tl.seek(time + direction * (marker.position - framePosition));
+        // Re-arm instant tweens at the opening checkpoint after Anime's tick finishes.
+        if (forward && marker.position === 0) {
+          queueMicrotask(() => {
+            if (tl.paused && tl.currentTime === 0) tl.reset(true);
+          });
+        }
         for (const { callback } of callbacks) {
           if (callback) queueMicrotask(callback);
         }
