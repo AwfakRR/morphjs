@@ -91,14 +91,16 @@ describe('Motion springs', () => {
   ])('unregisters a canceled $name without completing it', async ({ val, secondStage, tween }) => {
     const proxy = { val: 0 };
     const onComplete = vi.fn();
+    const onUpdate = vi.fn();
     animationEvents.on('complete', onComplete);
 
     try {
       const controls = tween
-        ? animate(proxy as any, { val }, { duration: 1 })
-        : spring(proxy as any, { val }, { stiffness: 100, damping: 20 });
+        ? animate(proxy as any, { val }, { duration: 1, onUpdate })
+        : spring(proxy as any, { val }, { stiffness: 100, damping: 20 }, { onUpdate });
       await vi.advanceTimersByTimeAsync(64);
       expect(proxy.val).toBeGreaterThan(0);
+      expect(onUpdate).toHaveBeenCalled();
       if (secondStage) {
         let reachedMiddle = false;
         for (let frame = 0; frame < 250; frame++) {
@@ -115,8 +117,11 @@ describe('Motion springs', () => {
       controls.cancel();
 
       const stillTracked = stateManager.getRunning().some(entry => entry.controls === controls);
+      await vi.advanceTimersByTimeAsync(32);
+      onUpdate.mockClear();
       await vi.advanceTimersByTimeAsync(4000);
       expect(stillTracked).toBe(false);
+      expect(onUpdate).not.toHaveBeenCalled();
       expect(onComplete).not.toHaveBeenCalled();
       expect(proxy.val).not.toBe(Array.isArray(val) ? val.at(-1) : val);
     } finally {
