@@ -39,7 +39,7 @@ morphjs/
 │   │
 │   ├── morph-stripped/        # Zero-overhead lightweight edition ("morph-stripped")
 │   │   ├── src/
-│   │   │   ├── api.ts         # Direct engine loaders (~5 KB gzip)
+│   │   │   ├── api.ts         # Direct engine loaders (~7 KB gzip)
 │   │   │   ├── engine.ts      # Streamlined engine loaders without registries
 │   │   │   ├── types.ts       # Stripped types
 │   │   │   └── index.ts       # Unified export entrypoint
@@ -65,7 +65,7 @@ morphjs/
 ### Editions: `morphjs` vs `morph-stripped`
 1. **`morph-stripped`** (`packages/morph-stripped`):
    - Direct lightweight loaders.
-   - Omits event buses, state manager registries, and adapter registries to minimize bundle footprint (~17 KB raw / ~5 KB gzip).
+   - Omits event buses, state manager registries, and adapter registries to minimize bundle footprint (~23 KB raw / ~7 KB gzip).
 2. **`morphjs`** (`packages/core`):
    - Full extensible architecture with dynamic adapter registration, `animationEvents` bus, and centralized `stateManager` tracking active tweens for global pause/resume/cleanup.
 

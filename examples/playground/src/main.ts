@@ -168,6 +168,14 @@ if (scrollContainer) {
   );
 }
 
+const revealContainer = document.getElementById('reveal-container');
+if (revealContainer && typeof IntersectionObserver !== 'undefined') {
+  revealContainer.classList.add('reveal-ready');
+  scroll.inView(revealContainer.querySelectorAll('.reveal-item'), (element) => {
+    element.classList.add('is-revealed');
+  }, { container: revealContainer, threshold: 0.25 });
+}
+
 // --- Demo 7: SVG ---
 const btnSvgDraw = document.getElementById('btn-svg-draw');
 const btnSvgMorph = document.getElementById('btn-svg-morph');

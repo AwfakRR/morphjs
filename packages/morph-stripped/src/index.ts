@@ -13,6 +13,7 @@ import type { MorphTargets, MorphControls } from './types';
 export { animate, spring, timeline, stagger, scroll, gesture, svg };
 export { loadGsap } from './engine';
 export type * from './types';
+export type { MorphInViewOptions } from './in-view';
 
 export interface MorphCallable {
   (targets: MorphTargets, properties: Record<string, any>, options?: AnimateArg): MorphControls;

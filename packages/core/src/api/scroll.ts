@@ -5,6 +5,7 @@ import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
 import { createNoopControls } from '../utils/controls';
+import { inView } from './in-view';
 
 /**
  * Create a scroll-linked animation.
@@ -30,7 +31,7 @@ import { createNoopControls } from '../utils/controls';
  *   console.log(`Scroll progress: ${progress}`);
  * });
  */
-export function scroll(
+function trackScroll(
   animationOrCallback: MorphControls | ((progress: number) => void),
   options?: MorphScrollOptions
 ): MorphControls {
@@ -103,3 +104,5 @@ export function scroll(
 
   return controls;
 }
+
+export const scroll = Object.assign(trackScroll, { inView });

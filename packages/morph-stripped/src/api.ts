@@ -4,6 +4,7 @@ import type {
   MorphControls, MorphTimeline,
 } from './types';
 import { loadMotion, loadAnime, loadGsapCore, loadScrollTrigger, loadMorphSVG, loadDrawSVG, wrap, createDeferred, toAnimeOptions, toAnimePosition, toGsapOptions, runSpring } from './engine';
+import { inView } from './in-view';
 
 export type AnimateArg = MorphAnimationOptions | number;
 
@@ -150,7 +151,7 @@ export function stagger(v: number, o?: MorphStaggerOptions): any {
   };
 }
 
-export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOptions): MorphControls {
+function trackScroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOptions): MorphControls {
   if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   if (o?.pin || o?.scrub || o?.engine === 'gsap') {
     return createDeferred(() => loadScrollTrigger().then(m => m.ScrollTrigger ? m : loadMotion(), () => loadMotion()), (m) => {
@@ -187,6 +188,8 @@ export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScroll
     return typeof a === 'function' ? mkd(() => { if (typeof r === 'function') r(); }) : a;
   });
 }
+
+export const scroll = Object.assign(trackScroll, { inView });
 
 export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
   if (typeof window === 'undefined') return () => {};
