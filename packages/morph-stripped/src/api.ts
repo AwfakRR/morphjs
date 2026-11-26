@@ -55,10 +55,6 @@ const timelines = new WeakMap<MorphTimeline, TimelineState>();
 
 export function timeline(opt?: TimelineOptions): MorphTimeline {
   const seq: Array<() => void> = [];
-  const animeSteps: Array<(tl: any) => void> = [];
-  let createAnime: (() => any) | undefined;
-  let rebuildAnime = false;
-  let finishAnime: (() => void) | undefined;
   let realTl: any = null;
   let activeEngine: 'g' | 'a' = opt?.engine === 'gsap' ? 'g' : 'a';
   let autoplay = opt?.autoplay !== false;
@@ -81,14 +77,10 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const parkAnime = () => {
     if (state.parent && !realTl.cancelled) realTl.cancel();
   };
-  const rememberAnime = (run: (tl: any) => void) => {
-    if (!state.parent || rebuildAnime) animeSteps.push(run);
-    run(realTl);
-  };
-  const addAnime = (run: (tl: any) => void) => {
+  const addAnime = (run: () => void) => {
     const { paused, currentTime, reversed } = realTl;
     if (state.parent && realTl.cancelled) realTl.reset(true);
-    rememberAnime(run);
+    run();
     if (paused) parkAnime();
     else {
       if (realTl.reversed !== reversed) realTl.alternate();
@@ -109,50 +101,33 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
         defaults: Object.keys(d).length ? toGsapOptions(d) : undefined,
       });
     } else {
-      createAnime = () => m.createTimeline({
+      realTl = m.createTimeline({
         autoplay: false,
         defaults: opt?.defaults ? toAnimeOptions(opt.defaults, undefined, true) : undefined,
       });
-      realTl = createAnime();
     }
     seq.splice(0).forEach(run => run());
     return pending;
   });
   const state: TimelineState = {
-    ready: async () => {
-      await ready;
-      await pending;
-      if (rebuildAnime) {
-        parkAnime();
-        realTl = createAnime!();
-        for (const run of animeSteps.splice(0)) run(realTl);
-        parkAnime();
-        rebuildAnime = false;
-        if (finishAnime) void realTl.then(finishAnime);
-      }
-    },
+    ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine }),
     adopt: () => {
-      if (createAnime) {
-        parkAnime();
-        // Already-built tweens may have been overwritten before the timeline was attached.
-        rebuildAnime = true;
+      if (!realTl || activeEngine !== 'a') return;
+      parkAnime();
+      // Anime revives composition on seek, but keeps overlap flags from other timelines.
+      for (let anim = realTl._head; anim; anim = anim._next) {
+        for (let tween = anim._head; tween; tween = tween._next) {
+          tween._isOverridden = tween._isOverlapped = 0;
+          tween._changeDuration = tween._updateDuration;
+        }
       }
     },
   };
 
   const deferred = createDeferred(() => ready, () => {
     if (activeEngine === 'g') return wrap(realTl, 'g');
-    const controls = wrap(new Proxy({}, {
-      get(_, key) {
-        if (key === 'then') return () => new Promise<void>(resolve => {
-          finishAnime = resolve;
-          void realTl.then(resolve);
-        });
-        const value = realTl[key];
-        return typeof value === 'function' ? value.bind(realTl) : value;
-      },
-    }), 'a');
+    const controls = wrap(realTl, 'a');
     controls.seek = (time) => {
       realTl.seek(realTl.reversed ? realTl.duration - time * 1000 : time * 1000);
       parkAnime();
@@ -201,7 +176,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             if (activeEngine === 'g') {
               realTl.fromTo(clock, { time: 0 }, { time: controls.duration, duration: controls.duration, ease: 'none', immediateRender: false }, p);
             } else {
-              addAnime(parent => { parent.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, toAnimePosition(p)); });
+              addAnime(() => { realTl.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, toAnimePosition(p)); });
             }
           }
         }, child.ready()));
@@ -211,7 +186,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             enqueue(() => { realTl.to(t, toGsapOptions(p), o); },
               (p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) && loadGsapFor(p));
           } else {
-            enqueue(() => addAnime(tl => { tl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); }));
+            enqueue(() => addAnime(() => { realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); }));
           }
         });
       }
@@ -220,7 +195,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     label(n: string, o?: Position) {
       step(() => enqueue(() => {
         if (activeEngine === 'g') realTl.addLabel(n, o);
-        else rememberAnime(tl => { tl.label(n, toAnimePosition(o)); });
+        else realTl.label(n, toAnimePosition(o));
       }));
       return tlo;
     },

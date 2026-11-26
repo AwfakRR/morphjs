@@ -252,6 +252,24 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
   }
 });
 
+it('preserves the original start of a destination-only Anime child after it has rendered', async () => {
+  const target = { x: 10 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: 110, duration: 1, ease: 'linear' });
+  await vi.waitFor(() => expect(child.duration).toBeCloseTo(1));
+  child.seek(0.75);
+  expect(target.x).toBeCloseTo(85);
+
+  const parent = timeline({ autoplay: false }).add(child, 0.5);
+  try {
+    parent.seek(1);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1));
+    expect(target.x).toBeCloseTo(60);
+  } finally {
+    parent.cancel();
+  }
+});
+
 it('resolves an initialized Anime child’s finished promise when its parent reaches the end', async () => {
   const child = timeline({ autoplay: false }).add({ x: 0 } as any, { x: 100, duration: 1 });
   await vi.waitFor(() => expect(child.duration).toBeCloseTo(1));
