@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { animate, configure, spring } from '../src/index';
+import { animate, animationEvents, configure, spring, stateManager } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 
 describe('Motion springs', () => {
@@ -78,6 +78,32 @@ describe('Motion springs', () => {
     expect(Math.abs(values[0] + 100)).toBeLessThan(5);
     expect(values).toContain(30);
     expect(values.at(-1)).toBe(0);
+  });
+
+  it.each([
+    ['single-stage', 100],
+    ['staged', [0, 100, 40]],
+  ])('unregisters a canceled %s spring without completing it', async (_, val) => {
+    const proxy = { val: 0 };
+    const onComplete = vi.fn();
+    animationEvents.on('complete', onComplete);
+
+    try {
+      const controls = spring(proxy as any, { val });
+      await vi.advanceTimersByTimeAsync(64);
+      expect(proxy.val).toBeGreaterThan(0);
+      expect(stateManager.getRunning()).toContainEqual(expect.objectContaining({ controls, targets: proxy }));
+
+      controls.cancel();
+
+      const stillTracked = stateManager.getRunning().some(entry => entry.controls === controls);
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(stillTracked).toBe(false);
+      expect(onComplete).not.toHaveBeenCalled();
+    } finally {
+      animationEvents.off('complete', onComplete);
+      stateManager.cancelFor(proxy as any);
+    }
   });
 });
 
