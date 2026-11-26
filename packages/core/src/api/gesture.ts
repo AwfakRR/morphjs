@@ -1,11 +1,11 @@
 // ponytail: clean gesture delegation to motion with lightweight native fallback
 import type { MorphTargets, MorphGestureOptions, GestureInfo } from '../types';
-import { motionAdapter } from '../adapters/motion-adapter';
+import { ensureMotion, motionAdapter } from '../adapters/motion-adapter';
 import { resolveAdapter } from '../router';
 import { resolveTargets } from '../utils/targets';
 
 export function gesture(targets: MorphTargets, options: MorphGestureOptions): () => void {
-  if (typeof window === 'undefined') return () => {};
+  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
   const adapter = resolveAdapter({ gesture: true });
   const elements = resolveTargets(targets);
@@ -25,7 +25,8 @@ export function gesture(targets: MorphTargets, options: MorphGestureOptions): ()
   }
 
   for (const el of elements) {
-    if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
+    if (!(typeof HTMLElement !== 'undefined' && el instanceof HTMLElement) &&
+        !(typeof SVGElement !== 'undefined' && el instanceof SVGElement)) continue;
 
     if (useNativeHoverPress && options.hover) {
       const enter = (e: Event) => options.onHoverStart?.(e);
@@ -51,55 +52,117 @@ export function gesture(targets: MorphTargets, options: MorphGestureOptions): ()
       });
     }
 
-    if (options.drag) {
-      let active = false;
-      let ox = 0, oy = 0, px = 0, py = 0;
-
-      const down = (e: PointerEvent) => {
-        active = true;
-        ox = px = e.clientX;
-        oy = py = e.clientY;
-        el.setPointerCapture?.(e.pointerId);
-        options.onDragStart?.(e, makeInfo(e.clientX, e.clientY, 0, 0, 0, 0));
-      };
-
-      const move = (e: PointerEvent) => {
-        if (!active) return;
-        const dx = e.clientX - px, dy = e.clientY - py;
-        px = e.clientX; py = e.clientY;
-        const tx = e.clientX - ox, ty = e.clientY - oy;
-        el.style.transform = `translate(${tx}px, ${ty}px)`;
-        options.onDrag?.(e, makeInfo(e.clientX, e.clientY, dx, dy, tx, ty));
-      };
-
-      const up = (e: PointerEvent) => {
-        if (!active) return;
-        active = false;
-        el.releasePointerCapture?.(e.pointerId);
-        options.onDragEnd?.(e, makeInfo(e.clientX, e.clientY, 0, 0, px - ox, py - oy));
-      };
-
-      el.addEventListener('pointerdown', down as EventListener);
-      el.addEventListener('pointermove', move as EventListener);
-      el.addEventListener('pointerup', up as EventListener);
-      el.addEventListener('pointercancel', up as EventListener);
-      cleanups.push(() => {
-        el.removeEventListener('pointerdown', down as EventListener);
-        el.removeEventListener('pointermove', move as EventListener);
-        el.removeEventListener('pointerup', up as EventListener);
-        el.removeEventListener('pointercancel', up as EventListener);
-      });
-    }
+    if (options.drag) cleanups.push(bindDrag(el, options));
   }
 
   return () => cleanups.forEach(fn => fn());
 }
 
-function makeInfo(x: number, y: number, dx: number, dy: number, ox: number, oy: number): GestureInfo {
-  return {
-    point: { x, y },
+function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): () => void {
+  const { constraints, momentum, snapToOrigin } = typeof options.drag === 'object' ? options.drag : {};
+  const clamp = (value: number, min?: number, max?: number) =>
+    Math.min(max ?? Infinity, Math.max(min ?? -Infinity, value));
+  const x = { position: 0, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.left, max: constraints?.right };
+  const y = { position: 0, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.top, max: constraints?.bottom };
+  let pointerId: number | undefined;
+  let lastMove = 0;
+  let release = 0;
+  const animations: Array<{ stop(): void }> = [];
+
+  const render = () => { el.style.transform = `translate(${x.position}px, ${y.position}px)`; };
+  const stop = () => {
+    release++;
+    animations.splice(0).forEach(animation => animation.stop());
+  };
+  const info = (e: PointerEvent, dx = 0, dy = 0): GestureInfo => ({
+    point: { x: e.clientX, y: e.clientY },
     delta: { x: dx, y: dy },
-    offset: { x: ox, y: oy },
-    velocity: { x: dx, y: dy },
+    offset: { x: x.position, y: y.position },
+    velocity: { x: x.velocity, y: y.velocity },
+  });
+
+  const down = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId !== undefined) return;
+    stop();
+    pointerId = e.pointerId;
+    for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
+      axis.from = axis.position;
+      axis.start = axis.previous = point;
+      axis.velocity = 0;
+    }
+    lastMove = e.timeStamp;
+    el.setPointerCapture?.(e.pointerId);
+    options.onDragStart?.(e, info(e));
+  };
+
+  const move = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId === undefined || pointerId !== e.pointerId) return;
+    const dx = e.clientX - x.previous, dy = e.clientY - y.previous;
+    const elapsed = e.timeStamp - lastMove;
+    for (const [axis, point, delta] of [[x, e.clientX, dx], [y, e.clientY, dy]] as const) {
+      axis.velocity = elapsed > 0 && elapsed <= 100 ? delta * 1000 / elapsed : 0;
+      axis.previous = point;
+      axis.position = clamp(axis.from + point - axis.start, axis.min, axis.max);
+    }
+    lastMove = e.timeStamp;
+    render();
+    options.onDrag?.(e, info(e, dx, dy));
+  };
+
+  const up = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId === undefined || pointerId !== e.pointerId) return;
+    pointerId = undefined;
+    if (e.type !== 'lostpointercapture') el.releasePointerCapture?.(e.pointerId);
+    if (e.type !== 'pointerup' || e.timeStamp - lastMove > 100) x.velocity = y.velocity = 0;
+    const id = ++release;
+    options.onDragEnd?.(e, info(e));
+    if (id !== release || (!snapToOrigin && (!momentum || (!x.velocity && !y.velocity)))) return;
+
+    ensureMotion().then(({ animate }) => {
+      if (id !== release) return;
+      for (const axis of [x, y]) {
+        const power = 0.8;
+        const destination = snapToOrigin ? 0 : clamp(axis.position + power * axis.velocity, axis.min, axis.max);
+        if (destination === axis.position) continue;
+        const onUpdate = (position: number) => {
+          if (id !== release) return;
+          axis.position = snapToOrigin ? position : clamp(position, axis.min, axis.max);
+          render();
+        };
+        animations.push(snapToOrigin
+          ? animate(axis.position, 0, { type: 'spring', stiffness: 300, damping: 30, onUpdate })
+          : animate(axis.position, destination, {
+            type: 'inertia', velocity: axis.velocity, power, min: axis.min, max: axis.max,
+            modifyTarget: () => destination, onUpdate,
+          }));
+      }
+    }).catch(() => {
+      if (id !== release) return;
+      stop();
+      if (!snapToOrigin) return;
+      x.position = y.position = 0;
+      render();
+    });
+  };
+
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+  return () => {
+    stop();
+    el.removeEventListener('pointerdown', down);
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', up);
+    el.removeEventListener('lostpointercapture', up);
+    if (pointerId !== undefined) {
+      el.releasePointerCapture?.(pointerId);
+      pointerId = undefined;
+    }
   };
 }

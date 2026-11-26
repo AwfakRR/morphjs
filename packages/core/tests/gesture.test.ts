@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gesture } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 
-const { hover, press } = vi.hoisted(() => ({ hover: vi.fn(), press: vi.fn() }));
-vi.mock('motion', () => ({ hover, press }));
+const { hover, press, animate } = vi.hoisted(() => ({ hover: vi.fn(), press: vi.fn(), animate: vi.fn() }));
+vi.mock('motion', () => ({ hover, press, animate }));
 
 class TestElement extends EventTarget {
   style = { transform: '' };
@@ -27,7 +27,118 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function send(target: EventTarget, type: string, clientX: number, clientY: number, timeStamp: number) {
+  const event = Object.assign(new Event(type), { clientX, clientY, pointerId: 1 });
+  target.dispatchEvent(Object.defineProperty(event, 'timeStamp', { value: timeStamp }));
+}
+
 describe('core gestures', () => {
+  it('clamps signed bounds, reports velocity, and preserves position across drags', () => {
+    const target = new TestElement();
+    const onDrag = vi.fn(), onDragEnd = vi.fn();
+    const cleanup = gesture(target as unknown as Element, {
+      drag: { constraints: { left: -30, right: 40, bottom: 15 } }, onDrag, onDragEnd,
+    });
+    send(target, 'pointerdown', 10, 20, 0);
+    send(target, 'pointermove', 110, -80, 20);
+    expect(target.style.transform).toBe('translate(40px, -100px)');
+    expect(onDrag).toHaveBeenLastCalledWith(expect.any(Event), expect.objectContaining({
+      delta: { x: 100, y: -100 }, offset: { x: 40, y: -100 }, velocity: { x: 5000, y: -5000 },
+    }));
+    send(target, 'pointerup', 110, -80, 25);
+    expect(onDragEnd).toHaveBeenLastCalledWith(expect.any(Event), expect.objectContaining({
+      offset: { x: 40, y: -100 }, velocity: { x: 5000, y: -5000 },
+    }));
+    send(target, 'pointerdown', 200, 200, 30);
+    send(target, 'pointermove', 190, 205, 50);
+    expect(target.style.transform).toBe('translate(30px, -95px)');
+    send(target, 'pointermove', 10, 400, 70);
+    expect(target.style.transform).toBe('translate(-30px, 15px)');
+    expect(animate).not.toHaveBeenCalled();
+    cleanup();
+  });
+
+  it('limits momentum to the bounds and interrupts it on pointerdown and cleanup', async () => {
+    const target = new TestElement();
+    const stop = vi.fn();
+    animate.mockReturnValue({ stop });
+    const cleanup = gesture(target as unknown as Element, { drag: { constraints: { right: 50 }, momentum: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 20, 0, 20);
+    send(target, 'pointerup', 20, 0, 25);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledWith(20, 50, expect.objectContaining({
+      type: 'inertia', velocity: 1000, max: 50,
+    }));
+    const glide = animate.mock.lastCall![2];
+    expect(glide.modifyTarget(800)).toBe(50);
+    glide.onUpdate(90);
+    expect(target.style.transform).toBe('translate(50px, 0px)');
+    send(target, 'pointerdown', 30, 0, 30);
+    expect(stop).toHaveBeenCalledOnce();
+    glide.onUpdate(45);
+    send(target, 'pointermove', 20, 0, 50);
+    expect(target.style.transform).toBe('translate(40px, 0px)');
+    send(target, 'pointerup', 20, 0, 55);
+    await Promise.resolve();
+    expect(animate).toHaveBeenCalledTimes(2);
+    cleanup();
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.transform).toBe('translate(40px, 0px)');
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('springs to origin instead of gliding when both options are set', async () => {
+    const target = new TestElement();
+    animate.mockReturnValue({ stop: vi.fn() });
+    const cleanup = gesture(target as unknown as Element, { drag: { momentum: true, snapToOrigin: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 40, 0, 20);
+    send(target, 'pointerup', 40, 0, 25);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledOnce();
+    expect(animate).toHaveBeenCalledWith(40, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.transform).toBe('translate(0px, 0px)');
+    cleanup();
+  });
+
+  it('does not fling a stationary or cancelled pointer', async () => {
+    const target = new TestElement();
+    const cleanup = gesture(target as unknown as Element, { drag: { momentum: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 20, 0, 20);
+    send(target, 'pointerup', 20, 0, 130);
+    send(target, 'pointerdown', 20, 0, 140);
+    send(target, 'pointermove', 30, 0, 150);
+    send(target, 'pointercancel', 30, 0, 160);
+    send(target, 'pointerdown', 30, 0, 170);
+    send(target, 'pointermove', 40, 0, 180);
+    send(target, 'lostpointercapture', 40, 0, 190);
+    send(target, 'pointerdown', 40, 0, 200);
+    send(target, 'pointermove', 50, 0, 220);
+    await Promise.resolve();
+
+    expect(animate).not.toHaveBeenCalled();
+    expect(target.style.transform).toBe('translate(50px, 0px)');
+    cleanup();
+  });
+
+  it('still snaps to origin if the optional Motion animation cannot start', async () => {
+    const target = new TestElement();
+    animate.mockImplementation(() => { throw new Error('Motion unavailable'); });
+    const cleanup = gesture(target as unknown as Element, { drag: { snapToOrigin: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 20, 0, 20);
+    send(target, 'pointerup', 20, 0, 25);
+
+    await vi.waitFor(() => expect(target.style.transform).toBe('translate(0px, 0px)'));
+    cleanup();
+  });
+
   it.each([
     ['hover', hover, 'onHoverStart', 'onHoverEnd', 'pointerenter', 'pointerleave'],
     ['press', press, 'onPressStart', 'onPressEnd', 'pointerdown', 'pointerup'],

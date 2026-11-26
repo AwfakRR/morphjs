@@ -83,7 +83,7 @@ scroll('.parallax', { pin: true, scrub: true });
 
 // 6. Interactive Gestures (Drag, Hover, Press via Pointer Events + Motion)
 gesture('.draggable', {
-  drag: true,
+  drag: { constraints: { left: -100, right: 100, top: 0, bottom: 0 }, momentum: true },
   hover: true,
   onDrag: (e, info) => console.log(info.offset.x)
 });
@@ -100,6 +100,8 @@ const state = flip.capture('.card');
 reorderCards();
 flip.from(state, { duration: 0.4, spring: true });
 ```
+
+Drag limits are signed pixel offsets from the element's starting position; omitted sides are unbounded. The element stays where you leave it by default. Set `momentum: true` to glide within the limits, or `snapToOrigin: true` to spring back to the start instead (snap takes precedence). Drag callbacks report the current offset in pixels and pointer velocity in pixels per second.
 
 ### Animation Scopes
 

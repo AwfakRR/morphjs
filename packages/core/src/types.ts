@@ -97,7 +97,11 @@ export interface MorphScrollOptions {
 
 // Gesture options
 export interface MorphGestureOptions {
-  drag?: boolean | { constraints?: { left?: number; right?: number; top?: number; bottom?: number } };
+  drag?: boolean | {
+    constraints?: { left?: number; right?: number; top?: number; bottom?: number };
+    momentum?: boolean;
+    snapToOrigin?: boolean;
+  };
   hover?: boolean;
   press?: boolean;
   onDragStart?: (event: Event, info: GestureInfo) => void;
