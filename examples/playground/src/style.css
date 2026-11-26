@@ -314,3 +314,11 @@ h1 {
 input[type=range] {
   accent-color: var(--c-blue);
 }
+
+@media (max-width: 480px) {
+  body,
+  .tabs,
+  .tab-content {
+    padding-inline: 1rem;
+  }
+}
