@@ -98,7 +98,13 @@ function toAnimeOptions(
   const result: Record<string, any> = { ...properties };
 
   if (options?.duration !== undefined) result.duration = options.duration * 1000;
-  if (options?.delay !== undefined) result.delay = options.delay * 1000;
+  const delay = options?.delay;
+  if (typeof delay === 'function') {
+    result.delay = (_target: unknown, index: number, targets: unknown[] | number) =>
+      delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
+  } else if (delay !== undefined) {
+    result.delay = delay * 1000;
+  }
   if (options?.ease !== undefined) result.ease = toAnimeEasing(options.ease);
   if (options?.repeat !== undefined) result.loop = options.repeat;
   if (options?.direction !== undefined) result.direction = options.direction;
@@ -110,10 +116,6 @@ function toAnimeOptions(
   if (options?.onComplete) result.onComplete = options.onComplete;
 
   return result;
-}
-
-if (typeof window !== 'undefined') {
-  ensureAnime().catch(() => {});
 }
 
 /**
@@ -202,4 +204,3 @@ export const animeAdapter: IAnimationAdapter = {
     return wrapAnimeControls(animation);
   },
 };
-

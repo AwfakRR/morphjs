@@ -63,10 +63,6 @@ export function wrapMotionControls(motionAnimation: any): MorphControls {
   };
 }
 
-if (typeof window !== 'undefined') {
-  ensureMotion().catch(() => {});
-}
-
 export const motionAdapter: IAnimationAdapter = {
   name: 'motion',
   capabilities: ['tween', 'spring', 'scroll', 'gesture', 'layout'],
