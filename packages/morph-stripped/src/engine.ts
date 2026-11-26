@@ -114,8 +114,9 @@ export function toAnimeOptions(props: Record<string, any>, opt?: any, usePropert
   if (!opt) return r;
   const delay = opt.delay;
   if (typeof delay === 'function') {
+    const delays: number[] = [];
     r.delay = (_target: unknown, index: number, targets: unknown[] | number) =>
-      delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
+      delays[index] ??= delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
   }
   if (opt.repeat !== undefined) r.loop = opt.repeat;
   if (opt.direction) r.direction = opt.direction;
