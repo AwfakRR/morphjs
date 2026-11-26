@@ -152,14 +152,14 @@
       <div class="card-header">
         <h2>Framework Integrations</h2>
       </div>
-      <div class="tabs">
-        <button class="tab-btn active" data-target="tab-react">React</button>
-        <button class="tab-btn" data-target="tab-vue">Vue</button>
-        <button class="tab-btn" data-target="tab-svelte">Svelte</button>
-        <button class="tab-btn" data-target="tab-tanstack">TanStack</button>
+      <div class="tabs" role="tablist" aria-label="Framework Integrations">
+        <button class="tab-btn active" id="framework-tab-react" role="tab" aria-controls="tab-react" aria-selected="true" tabindex="0">React</button>
+        <button class="tab-btn" id="framework-tab-vue" role="tab" aria-controls="tab-vue" aria-selected="false" tabindex="-1">Vue</button>
+        <button class="tab-btn" id="framework-tab-svelte" role="tab" aria-controls="tab-svelte" aria-selected="false" tabindex="-1">Svelte</button>
+        <button class="tab-btn" id="framework-tab-tanstack" role="tab" aria-controls="tab-tanstack" aria-selected="false" tabindex="-1">TanStack</button>
       </div>
       <div class="tab-content">
-        <pre id="tab-react" class="tab-pane active"><code>import {
+        <pre id="tab-react" class="tab-pane active" role="tabpanel" aria-labelledby="framework-tab-react" tabindex="0"><code>import {
   useAnimate
 } from '@morphjs/react';
 
@@ -179,7 +179,7 @@ function App() {
     &lt;/div&gt;
   );
 }</code></pre>
-        <pre id="tab-vue" class="tab-pane"><code>&lt;script setup&gt;
+        <pre id="tab-vue" class="tab-pane" role="tabpanel" aria-labelledby="framework-tab-vue" tabindex="0" hidden><code>&lt;script setup&gt;
 import {
   vMorph
 } from '@morphjs/vue';
@@ -190,7 +190,7 @@ import {
     Box
   &lt;/div&gt;
 &lt;/template&gt;</code></pre>
-        <pre id="tab-svelte" class="tab-pane"><code>&lt;script&gt;
+        <pre id="tab-svelte" class="tab-pane" role="tabpanel" aria-labelledby="framework-tab-svelte" tabindex="0" hidden><code>&lt;script&gt;
 import {
   morphAction
 } from '@morphjs/svelte';
@@ -203,7 +203,7 @@ const options = {
 &lt;div use:morphAction={options}&gt;
   Box
 &lt;/div&gt;</code></pre>
-        <pre id="tab-tanstack" class="tab-pane"><code>import {
+        <pre id="tab-tanstack" class="tab-pane" role="tabpanel" aria-labelledby="framework-tab-tanstack" tabindex="0" hidden><code>import {
   Outlet
 } from '@tanstack/react-router';
 import {

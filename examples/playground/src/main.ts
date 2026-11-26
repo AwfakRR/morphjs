@@ -1,4 +1,5 @@
 import morph, { timeline, spring, stagger, scroll, gesture, svg } from 'morph-stripped';
+import { initFrameworkTabs } from './framework-tabs';
 
 // --- Demo 1: Quick Start (Shorthand) ---
 const btnQuickMove = document.getElementById('btn-quick-move');
@@ -213,18 +214,4 @@ btnSvgMorph?.addEventListener('click', () => {
 });
 
 // --- Framework Tabs ---
-const tabBtns = document.querySelectorAll('.tab-btn');
-const tabPanes = document.querySelectorAll('.tab-pane');
-
-tabBtns.forEach((btn) => {
-  btn.addEventListener('click', () => {
-    tabBtns.forEach((b) => b.classList.remove('active'));
-    tabPanes.forEach((p) => p.classList.remove('active'));
-
-    btn.classList.add('active');
-    const targetId = btn.getAttribute('data-target');
-    if (targetId) {
-      document.getElementById(targetId)?.classList.add('active');
-    }
-  });
-});
+if (typeof document !== 'undefined') initFrameworkTabs(document);
