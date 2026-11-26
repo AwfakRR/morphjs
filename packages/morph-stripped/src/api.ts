@@ -162,6 +162,27 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
   return () => c.forEach(f => f());
 }
 
+function pathTemplate(d: string): string {
+  return d.replace(/[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?/g, '#').replace(/[\s,]/g, '');
+}
+
+function sampleMorphPaths(doc: Document, paths: [string, string]): [string, string] {
+  const measure = (d: string) => {
+    const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', d);
+    return { path, length: path.getTotalLength() };
+  };
+  const from = measure(paths[0]);
+  const to = measure(paths[1]);
+  const count = Math.max(2, Math.ceil(Math.max(from.length, to.length) / 3) + 1);
+  const sample = ({ path, length }: ReturnType<typeof measure>) => Array.from({ length: count }, (_, i) => {
+    // At exactly zero, an empty leading subpath can return its move point instead of the outline.
+    const { x, y } = path.getPointAtLength(Math.max(Number.EPSILON, i / (count - 1)) * length);
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(3)} ${y.toFixed(3)}`;
+  }).join(' ');
+  return [sample(from), sample(to)];
+}
+
 export const svg = {
   draw(t: MorphTargets, o?: MorphSvgOptions): MorphControls {
     const ir = o?.direction === 'reverse' || o?.direction === 'alternate-reverse';
@@ -186,7 +207,12 @@ export const svg = {
         v.attr = { d: d[1] }; return wrap(gsap.to(t, v), 'g');
       });
     }
-    return createDeferred(loadAnime, (a) => wrap(a.animate(t, toAnimeOptions({ d }, ao)), 'a'));
+    return createDeferred(loadAnime, (a) => {
+      const paths = typeof document !== 'undefined' && pathTemplate(d[0]) !== pathTemplate(d[1])
+        ? sampleMorphPaths(document, d)
+        : d;
+      return wrap(a.animate(t, toAnimeOptions({ d: paths }, ao)), 'a');
+    });
   },
   attr(t: MorphTargets, att: Record<string, any>, o?: MorphAnimationOptions): MorphControls {
     if ((o as any)?.engine === 'gsap') return createDeferred(loadGsap, ({ gsap }) => wrap(gsap.to(t, { attr: att, ...toGsapOptions({}, o) }), 'g'));
