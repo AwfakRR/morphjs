@@ -27,7 +27,8 @@ export function toAnimeEasing(input?: EasingValue): any {
   if (typeof input === 'function') return input;
   if (typeof input === 'string' && customEasings.has(input)) return customEasings.get(input);
   if (Array.isArray(input)) return `cubicBezier(${input.join(',')})`;
-  return input;
+  if (typeof input === 'string' && /^ease[A-Z]/.test(input)) return input[4].toLowerCase() + input.slice(5);
+  return input; // pass through Anime-native strings like 'out(3)' or 'inOutQuad'
 }
 
 /** Map MorphJS easing names → GSAP easing strings */
