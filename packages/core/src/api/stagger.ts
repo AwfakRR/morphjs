@@ -3,10 +3,28 @@ import { animeAdapter } from '../adapters/anime-adapter';
 import { adapterRegistry } from '../adapters/adapter';
 
 type Delay = (index: number, total: number) => number;
-const advanced = new WeakMap<Function, (targets: MorphTargets) => Promise<Delay>>();
+type AnimeDelay = (target: unknown, index: number, targets: unknown[]) => number;
+const advanced = new WeakMap<Function, {
+  prepare: (targets: MorphTargets) => Promise<Delay>;
+  create: () => AnimeDelay;
+}>();
 
 export function prepareStagger(delay: MorphAnimationOptions['delay'], targets: MorphTargets) {
-  if (typeof delay === 'function') return advanced.get(delay)?.(targets);
+  if (typeof delay === 'function') return advanced.get(delay)?.prepare(targets);
+}
+
+export function animeTimelineStagger(delay: MorphAnimationOptions['delay']): AnimeDelay | undefined {
+  const stagger = typeof delay === 'function' ? advanced.get(delay) : undefined;
+  if (!stagger) return;
+  const byTargets = new WeakMap<unknown[], AnimeDelay>();
+  return (target, index, targets) => {
+    let compute = byTargets.get(targets);
+    if (!compute) {
+      compute = stagger.create();
+      byTargets.set(targets, compute);
+    }
+    return compute(target, index, targets);
+  };
 }
 
 /**
@@ -52,17 +70,21 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
     // regardless of the default animation adapter.
     const adapter = adapterRegistry.findByCapability('stagger');
     if (adapter === animeAdapter) {
+      const create = () => adapter.stagger!(value, options);
       let direct: ReturnType<NonNullable<typeof adapter.stagger>>;
-      const delay = (...args: unknown[]) => (direct ??= adapter.stagger!(value, options))(...args);
-      advanced.set(delay, async targets => {
-        try {
-          await adapter.ensure?.();
-        } catch {
-          return index => index * value;
-        }
-        const compute = adapter.stagger!(value, options);
-        const list = Array.isArray(targets) ? targets.flat() : [targets];
-        return index => Number(compute(list[index], index, list)) / 1000;
+      const delay = (...args: unknown[]) => (direct ??= create())(...args);
+      advanced.set(delay, {
+        create,
+        async prepare(targets) {
+          try {
+            await adapter.ensure?.();
+          } catch {
+            return index => index * value;
+          }
+          const compute = create();
+          const list = Array.isArray(targets) ? targets.flat() : [targets];
+          return index => Number(compute(list[index], index, list)) / 1000;
+        },
       });
       return delay;
     }

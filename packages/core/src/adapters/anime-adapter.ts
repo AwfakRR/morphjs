@@ -12,6 +12,7 @@ import type {
 } from '../types';
 import { toAnimeEasing } from '../easing/easing';
 import { notifyControlsCanceled } from '../utils/controls';
+import { animeTimelineStagger } from '../api/stagger';
 
 /** Cached Anime.js v4 module */
 let animeModule: Record<string, any> | null = null;
@@ -160,7 +161,9 @@ export const animeAdapter: IAnimationAdapter = {
     const anime = getAnimeSync();
 
     const { duration, delay, ease } = options?.defaults ?? {};
-    const defaults = toAnimeOptions({}, { duration, delay, ease });
+    const staggerDelay = animeTimelineStagger(delay);
+    const defaults = toAnimeOptions({}, { duration, delay: staggerDelay ? undefined : delay, ease });
+    if (staggerDelay) defaults.delay = staggerDelay;
 
     const pauses: Array<{ position: number; callback?: () => void }> = [];
     // Compare checkpoints at the same precision as Anime's playhead getters.
