@@ -464,16 +464,27 @@ export const svg = {
         const { inline, priority } = previous?.value === value
           ? previous
           : { inline: value, priority: style.getPropertyPriority?.('transform') ?? '' };
-        const restore = inline !== value;
-        if (restore) {
-          if (priority) style.setProperty('transform', inline, priority);
-          else style.transform = inline;
-        }
+        const readTransform = () => window.getComputedStyle?.(element).transform ?? '';
         let computed: string;
-        try {
-          computed = window.getComputedStyle?.(element).transform ?? '';
-        } finally {
-          if (restore) style.transform = value;
+        if (inline === value) {
+          computed = readTransform();
+        } else {
+          const property = 'transition-property';
+          const transition = style.getPropertyValue(property);
+          const transitionPriority = style.getPropertyPriority(property);
+          style.setProperty(property, 'none', 'important');
+          try {
+            if (priority) style.setProperty('transform', inline, priority);
+            else style.transform = inline;
+            computed = readTransform();
+          } finally {
+            style.transform = value;
+            try {
+              readTransform();
+            } finally {
+              style.setProperty(property, transition, transitionPriority);
+            }
+          }
         }
         const composable = inline.includes('(') && !/\b(?:var|env|attr)\(/i.test(inline);
         const original = composable ? inline : computed;

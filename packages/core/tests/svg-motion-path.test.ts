@@ -5,7 +5,16 @@ import { svg as stripped } from '../../morph-stripped/src/index';
 
 class Marker {
   nodeType = 1;
-  style = { transform: '' };
+  style = new class {
+    transform = '';
+    private declarations = new Map<string, { value: string; priority: string }>();
+    getPropertyValue(name: string) { return this.declarations.get(name)?.value ?? ''; }
+    getPropertyPriority(name: string) { return this.declarations.get(name)?.priority ?? ''; }
+    setProperty(name: string, value: string, priority = '') {
+      if (value) this.declarations.set(name, { value, priority });
+      else this.declarations.delete(name);
+    }
+  };
 }
 
 function geometry() {
@@ -140,7 +149,7 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     next.finish();
     await next.finished;
     expect(marker.style.transform).toBe(`translate(40px,60px) ${offset} rotate(90deg) ${linear}`);
-    expect(getComputedStyle).toHaveBeenCalledTimes(2);
+    expect(getComputedStyle).toHaveBeenCalledTimes(3);
   });
 
   it.each(['inline', 'stylesheet'])('resolves %s centering again after the marker resizes', async source => {
@@ -171,6 +180,39 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     await next.finished;
     expect(marker.style.transform).toBe('translate(40px,60px) translate(-64px,-29px) rotate(90deg) matrix(4,0,0,1,0,0)');
   });
+
+  it.each([['transform, opacity', 'important'], ['', '']])(
+    'samples a repeated run without a CSS transform transition (inline: %s)',
+    async (transition, priority) => {
+      const { marker, target } = browser();
+      const property = 'transition-property';
+      marker.style.setProperty(property, transition, priority);
+      const track = geometry() as unknown as SVGGeometryElement;
+      const options = { duration: 1, autoplay: false };
+      const first = svg.motionPath(target, track, options);
+      first.finish();
+      await first.finished;
+      const endpoint = marker.style.transform;
+
+      const reads: string[] = [];
+      vi.stubGlobal('window', {
+        getComputedStyle: () => {
+          const suppressed = marker.style.getPropertyValue(property) === 'none'
+            && marker.style.getPropertyPriority(property) === 'important';
+          if (suppressed) reads.push(marker.style.transform);
+          return { transform: !marker.style.transform && suppressed ? 'none' : 'matrix(1, 0, 0, 1, 40, 60)' };
+        },
+      });
+      const next = svg.motionPath(target, track, options);
+      next.finish();
+      await next.finished;
+
+      expect(marker.style.transform).toBe(endpoint);
+      expect(reads).toEqual(['', endpoint]);
+      expect(marker.style.getPropertyValue(property)).toBe(transition);
+      expect(marker.style.getPropertyPriority(property)).toBe(priority);
+    },
+  );
 
   it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
     const { marker, target } = browser();
