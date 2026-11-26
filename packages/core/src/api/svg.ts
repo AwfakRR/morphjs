@@ -58,10 +58,12 @@ export const svg = {
     });
 
     // Anime passes (target, index); the GSAP dash-offset fallback passes (index, target).
-    const length = lengths.every(len => len === lengths[0])
-      ? lengths[0]
-      : (targetOrIndex: Element | number, index: number) => lengths[typeof targetOrIndex === 'number' ? targetOrIndex : index];
-    return animateSvg(elements, { strokeDashoffset: isReverse ? [0, length] : [length, 0] }, options);
+    const lengthAt = (targetOrIndex: Element | number, index: number) =>
+      lengths[typeof targetOrIndex === 'number' ? targetOrIndex : index];
+    const offsets = (length: number | typeof lengthAt) => ({ strokeDashoffset: isReverse ? [0, length] : [length, 0] });
+    return lengths.every(length => length === lengths[0])
+      ? animateSvg(elements, offsets(lengths[0]), options)
+      : animateSvg(elements, offsets(lengthAt), options, index => offsets(lengths[index]));
   },
 
   /**

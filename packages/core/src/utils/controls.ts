@@ -42,3 +42,27 @@ export function createNoopControls(): MorphControls {
     commitStyles: () => {}
   };
 }
+
+export function groupControls(controls: MorphControls[]): MorphControls {
+  const first = controls[0];
+  const finished = () => Promise.all(controls.map(control => control.finished)).then(() => {});
+  return {
+    play: () => controls.forEach(control => control.play()),
+    pause: () => controls.forEach(control => control.pause()),
+    reverse: () => controls.forEach(control => control.reverse()),
+    cancel: () => controls.forEach(control => control.cancel()),
+    finish: () => controls.forEach(control => control.finish()),
+    restart: () => controls.forEach(control => control.restart()),
+    seek: time => controls.forEach(control => control.seek?.(time)),
+    commitStyles: () => controls.forEach(control => control.commitStyles()),
+    get progress() { return first.progress; },
+    get currentTime() { return first.currentTime; },
+    get playState() {
+      return controls.find(control => control.playState === 'running')?.playState
+        ?? controls.find(control => control.playState === 'paused')?.playState
+        ?? first.playState;
+    },
+    get finished() { return finished(); },
+    then: (onFulfilled, onRejected) => finished().then(onFulfilled, onRejected),
+  };
+}

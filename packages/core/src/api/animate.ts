@@ -1,8 +1,10 @@
 // ponytail: shortest API (numeric duration, boolean spring) and compact queue runner
-import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls, MorphSvgOptions } from '../types';
+import type { IAnimationAdapter, MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls, MorphSvgOptions } from '../types';
 import { getConfig, resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
-import { createNoopControls } from '../utils/controls';
+import { createNoopControls, groupControls } from '../utils/controls';
+import { animeAdapter } from '../adapters/anime-adapter';
+import { gsapAdapter } from '../adapters/gsap-adapter';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { createDeferredControls } from '../utils/deferred-controls';
@@ -44,16 +46,18 @@ export function animate(
 export function animateSvg(
   targets: MorphTargets,
   properties: Record<string, any>,
-  options: MorphSvgOptions = {}
+  options: MorphSvgOptions = {},
+  targetProperties?: (index: number) => Record<string, any>
 ): MorphControls {
-  return runAnimation(targets, properties, options, true);
+  return runAnimation(targets, properties, options, true, targetProperties);
 }
 
 function runAnimation(
   targets: MorphTargets,
   properties: Record<string, any>,
   options: AnimateArg,
-  useSvg = false
+  useSvg = false,
+  targetProperties?: (index: number) => Record<string, any>
 ): MorphControls {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return createNoopControls();
@@ -79,14 +83,32 @@ function runAnimation(
   const elements = resolveTargets(targets);
   const animTargets = elements.length > 0 ? elements : targets;
 
-  const startAnimation = (animationOptions: AnimateOptions) => {
-    if (useSvg && adapter.svg) {
-      return adapter.svg(animTargets, properties, animationOptions);
+  const startAnimation = (backend: IAnimationAdapter, animationOptions: AnimateOptions, isFallback = false) => {
+    const start = (targets: MorphTargets, props: Record<string, any>, options: AnimateOptions) => {
+      if (!isFallback && useSvg && backend.svg) return backend.svg(targets, props, options);
+      if (!isFallback && springOpts && backend.spring && !reduceMotion) {
+        return backend.spring(targets, props, springOpts, options);
+      }
+      return backend.animate(targets, props, options);
+    };
+
+    if (!targetProperties || !elements.length || backend === animeAdapter || backend === gsapAdapter) {
+      return start(animTargets, properties, animationOptions);
     }
-    if (springOpts && adapter.spring && !reduceMotion) {
-      return adapter.spring(animTargets, properties, springOpts, animationOptions);
-    }
-    return adapter.animate(animTargets, properties, animationOptions);
+
+    const { delay, onStart, onComplete, onCancel, ...shared } = animationOptions;
+    const once = (callback?: () => void) => callback && (() => {
+      const notify = callback;
+      callback = undefined;
+      notify?.();
+    });
+    const startOnce = once(onStart), cancelOnce = once(onCancel);
+    const controls = groupControls(elements.map((element, index) => start([element], targetProperties(index), {
+      ...shared, delay: typeof delay === 'function' ? delay(index, elements.length) : delay,
+      onStart: startOnce, onCancel: cancelOnce,
+    })));
+    if (onComplete) void controls.finished.then(onComplete, () => {});
+    return controls;
   };
 
   const pendingDelay = prepareStagger(opts.delay, animTargets);
@@ -95,14 +117,14 @@ function runAnimation(
     try {
       if (pendingDelay) animationOptions = { ...opts, delay: await pendingDelay };
       await adapter.ensure?.();
-      resolve(startAnimation(animationOptions));
+      resolve(startAnimation(adapter, animationOptions));
     } catch (err) {
       if (defaultSvg) {
         try {
           const fallback = resolveAdapter();
           if (fallback !== adapter) {
             await fallback.ensure?.();
-            resolve(fallback.animate(animTargets, properties, animationOptions));
+            resolve(startAnimation(fallback, animationOptions, true));
             return;
           }
         } catch {
@@ -122,7 +144,7 @@ function runAnimation(
     animControls = deferred.controls;
   } else {
     try {
-      animControls = startAnimation(opts);
+      animControls = startAnimation(adapter, opts);
     } catch {
       const deferred = createDeferredControls();
       void loadAndAnimate(deferred);
