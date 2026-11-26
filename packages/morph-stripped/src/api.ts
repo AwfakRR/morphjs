@@ -408,6 +408,8 @@ function sampleMorphPaths(doc: Document, paths: [string, string]): [string, stri
   return [sample(from), sample(to)];
 }
 
+const pathTransforms = new WeakMap<CSSStyleDeclaration, { base: string; value: string }>();
+
 export const svg = {
   motionPath(targets: MorphTargets, path: string | SVGGeometryElement, options: MorphMotionPathOptions = {}): MorphControls {
     if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
@@ -429,35 +431,52 @@ export const svg = {
     const clamp = (value: number) => Math.max(0, Math.min(1, value));
     const from = (Number.isFinite(start) ? clamp(start) : 0) * length;
     const to = (Number.isFinite(end) ? clamp(end) : 1) * length;
-    const tween = (unit: 'px' | 'deg', sample: (distance: number) => number) => ({
-      from: `0${unit}`,
-      to: `1${unit}`,
-      modifier: (progress: number) => sample(from + (to - from) * clamp(progress)),
-    });
-    const properties = {
-      translateX: {
-        ...tween('px', distance => geometry.getPointAtLength(distance).x),
-        from: (target: HTMLElement | SVGElement) => {
-          if (!autoRotate && target.style && !target.style.transform) {
-            const transform = window.getComputedStyle?.(target).transform;
-            if (transform && transform !== 'none') target.style.transform = transform;
+    const progressTarget = (elements: Element[]) => {
+      const markers = elements.flatMap(element => {
+        const style = (element as HTMLElement).style;
+        if (!style) return [];
+        const previous = pathTransforms.get(style);
+        const inline = style.transform;
+        const base = previous && previous.value === inline
+          ? previous.base
+          : inline || window.getComputedStyle?.(element).transform || '';
+        return [{ style, base: base === 'none' ? '' : base }];
+      });
+
+      let progress = 0;
+      return {
+        get progress() { return progress; },
+        set progress(value: number) {
+          progress = value;
+          const distance = from + (to - from) * clamp(value);
+          const point = geometry.getPointAtLength(distance);
+          const translation = `translate(${point.x}px,${point.y}px)`;
+          let rotation = '';
+          if (autoRotate) {
+            const delta = Math.min(1, length / 2);
+            const before = geometry.getPointAtLength(Math.max(0, distance - delta));
+            const after = geometry.getPointAtLength(Math.min(length, distance + delta));
+            const angle = Math.atan2(after.y - before.y, after.x - before.x) * 180 / Math.PI;
+            rotation = ` rotate(${angle}deg)`;
           }
-          return '0px';
+          for (const { style, base } of markers) {
+            style.transform = translation + (base ? ` ${base}` : '') + rotation;
+            pathTransforms.set(style, { base, value: style.transform });
+          }
         },
-      },
-      translateY: tween('px', distance => geometry.getPointAtLength(distance).y),
-      ...(autoRotate && {
-        rotate: tween('deg', distance => {
-          const delta = Math.min(1, length / 2);
-          const before = geometry.getPointAtLength(Math.max(0, distance - delta));
-          const after = geometry.getPointAtLength(Math.min(length, distance + delta));
-          return Math.atan2(after.y - before.y, after.x - before.x) * 180 / Math.PI;
-        }),
-      }),
+      };
     };
-    return createDeferred(() => loadAnime().catch(() => undefined), (a) => a
-      ? wrap(a.animate(targets, toAnimeOptions(properties, { ...timing, ease })), 'a')
-      : mkd());
+    return createDeferred(() => loadAnime().catch(() => undefined), (a) => {
+      if (!a) return mkd();
+      let elements: Element[];
+      try {
+        elements = a.utils.$(targets);
+      } catch {
+        return mkd();
+      }
+      if (!elements.length) return mkd();
+      return wrap(a.animate(progressTarget(elements), toAnimeOptions({ progress: [0, 1] }, { ...timing, ease })), 'a');
+    });
   },
 
   draw(t: MorphTargets, o?: MorphSvgOptions): MorphControls {

@@ -83,7 +83,7 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
 
     controls.seek?.(0.6);
     await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
-    expect(marker.style.transform.trim()).toBe('translate(40px,20px) rotate(90deg)');
+    expect(marker.style.transform).toBe('translate(40px,20px) translateX(0%) translateY(0em) rotate(0turn) rotate(90deg)');
     controls.cancel();
   });
 
@@ -102,6 +102,23 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(getComputedStyle).toHaveBeenCalledWith(target);
     expect(marker.style.transform.trim()).toBe(`translate(40px,20px) ${transform}`);
     controls.cancel();
+  });
+
+  it('translates before an inline rotation and scale without stacking successive path transforms', async () => {
+    const { marker, target } = browser();
+    const track = geometry() as unknown as SVGGeometryElement;
+    marker.style.transform = 'rotate(35deg) scale(1.2)';
+
+    const first = svg.motionPath(target, track, { duration: 1, autoplay: false });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe('translate(40px,60px) rotate(35deg) scale(1.2)');
+
+    const next = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    next.seek?.(0.6);
+    await vi.waitFor(() => expect(next.currentTime).toBe(0.6));
+    expect(marker.style.transform).toBe('translate(40px,20px) rotate(35deg) scale(1.2) rotate(90deg)');
+    next.cancel();
   });
 
   it('returns noop controls on the server or when the path cannot be sampled', async () => {
