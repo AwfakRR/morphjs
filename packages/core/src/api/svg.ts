@@ -30,16 +30,16 @@ export const svg = {
     const clamp = (value: number) => Math.max(0, Math.min(1, value));
     const from = (Number.isFinite(start) ? clamp(start) : 0) * length;
     const to = (Number.isFinite(end) ? clamp(end) : 1) * length;
-    const tween = (sample: (distance: number) => number) => ({
-      from: 0,
-      to: 1,
+    const tween = (unit: 'px' | 'deg', sample: (distance: number) => number) => ({
+      from: `0${unit}`,
+      to: `1${unit}`,
       modifier: (progress: number) => sample(from + (to - from) * clamp(progress)),
     });
     const properties = {
-      translateX: tween(distance => geometry.getPointAtLength(distance).x),
-      translateY: tween(distance => geometry.getPointAtLength(distance).y),
+      translateX: tween('px', distance => geometry.getPointAtLength(distance).x),
+      translateY: tween('px', distance => geometry.getPointAtLength(distance).y),
       ...(autoRotate && {
-        rotate: tween(distance => {
+        rotate: tween('deg', distance => {
           const delta = Math.min(1, length / 2);
           const before = geometry.getPointAtLength(Math.max(0, distance - delta));
           const after = geometry.getPointAtLength(Math.min(length, distance + delta));

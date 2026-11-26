@@ -74,6 +74,19 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(marker.style.transform).toContain('translate(40px,60px)');
   });
 
+  it('writes path translations and tangent rotations in pixels and degrees', async () => {
+    const { marker, target } = browser();
+    marker.style.transform = 'translateX(0%) translateY(0em) rotate(0turn)';
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false, autoRotate: true,
+    });
+
+    controls.seek?.(0.6);
+    await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
+    expect(marker.style.transform.trim()).toBe('translate(40px,20px) rotate(90deg)');
+    controls.cancel();
+  });
+
   it('returns noop controls on the server or when the path cannot be sampled', async () => {
     const path = geometry();
     const track = path as unknown as SVGPathElement;
