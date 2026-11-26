@@ -267,7 +267,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
               recordAnime((host, current) => {
                 const offset = animeOffset(host, toAnimePosition(o), current);
                 const definition = current ? replay ?? options : params;
-                if (!replay) {
+                if (!current) {
                   replay = { ...options };
                   for (const property of Object.keys(params)) {
                     if (property in realTl.defaults) continue;
