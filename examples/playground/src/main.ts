@@ -186,14 +186,18 @@ const initStroke = () => {
 initStroke();
 
 let isDrawn = false;
+let strokeDraw: ReturnType<typeof svg.draw> | null = null;
 btnSvgDraw?.addEventListener('click', () => {
+  if (!strokeDraw) {
+    strokeDraw = svg.draw('#svg-stroke', { duration: 1.5, ease: 'easeInOut' });
+    isDrawn = true;
+    return;
+  }
   if (isDrawn) {
-    // Erase
-    svg.draw('#svg-stroke', { duration: 1, direction: 'reverse', ease: 'easeInOut' });
+    strokeDraw.reverse();
     isDrawn = false;
   } else {
-    // Draw
-    svg.draw('#svg-stroke', { duration: 1.5, ease: 'easeInOut' });
+    strokeDraw.play();
     isDrawn = true;
   }
 });
