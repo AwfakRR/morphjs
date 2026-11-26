@@ -211,6 +211,35 @@ it.each([false, true])('cancels a tween once before its Motion scroll link loads
   }
 });
 
+it.each(['seek', 'reverse'])('tracks a finished Anime tween after %s and restart', async action => {
+  const scope = createScope();
+  const target = { value: 0 };
+  const tween = scope.animate(target as unknown as MorphTargets, { value: [0, 100] }, { engine: 'anime', duration: 0.4 });
+
+  try {
+    await vi.advanceTimersByTimeAsync(480);
+    expect(scope.size).toBe(0);
+    const previous = tween.finished;
+
+    if (action === 'seek') tween.seek?.(0.1);
+    else tween.reverse();
+    tween.restart();
+    expect(tween.finished).not.toBe(previous);
+    const completed = vi.fn();
+    void tween.then(completed);
+    scope.add(tween);
+    await vi.advanceTimersByTimeAsync(80);
+    expect(completed).not.toHaveBeenCalled();
+    expect(scope.size).toBe(1);
+    await vi.advanceTimersByTimeAsync(480);
+    expect(completed).toHaveBeenCalledOnce();
+    expect(scope.size).toBe(0);
+  } finally {
+    scope.revert();
+    tween.cancel();
+  }
+});
+
 it.each(['anime', 'gsap'])('tracks a completed %s timeline again when it is restarted and re-added', async engine => {
   const scope = createScope();
   const timeline = scope.timeline({ engine, defaults: { duration: 0.4 } })

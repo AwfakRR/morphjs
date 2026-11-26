@@ -50,6 +50,7 @@ export function getAnimeSync(): Record<string, any> {
  */
 export function wrapAnimeControls(animeAnimation: any): MorphControls {
   let finished: Promise<void> | undefined;
+  let settled = false;
   const controls: MorphControls = {
     play: () => animeAnimation.play(),
     pause: () => animeAnimation.pause(),
@@ -64,10 +65,7 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       }
     },
     reverse: () => animeAnimation.reverse(),
-    restart: () => {
-      if (animeAnimation.completed) finished = undefined;
-      animeAnimation.restart();
-    },
+    restart: () => animeAnimation.restart(),
     seek: (time: number) => {
       if (typeof animeAnimation.seek === 'function') {
         animeAnimation.seek(time * 1000);
@@ -83,7 +81,11 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       return (animeAnimation.currentTime || 0) / 1000; // ms → seconds
     },
     get finished() {
-      return finished ??= Promise.resolve(animeAnimation);
+      if (settled && !animeAnimation.completed) {
+        finished = undefined;
+        settled = false;
+      }
+      return finished ??= animeAnimation.then(() => { settled = true; });
     },
     get playState() {
       if (animeAnimation.completed) return 'finished' as const;
