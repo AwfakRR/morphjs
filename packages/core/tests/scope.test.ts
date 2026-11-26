@@ -19,6 +19,19 @@ beforeAll(async () => {
   await Promise.all([ensureMotion(), animeAdapter.ensure!()]);
 });
 
+function makeScroller() {
+  const root = Object.assign(new EventTarget(), {
+    clientWidth: 100, clientHeight: 100, scrollWidth: 100, scrollHeight: 500, scrollLeft: 0, scrollTop: 0,
+  });
+  const win = new EventTarget();
+  vi.stubGlobal('window', win);
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { documentElement: root, scrollingElement: root }));
+  return (top: number) => {
+    root.scrollTop = top;
+    win.dispatchEvent(new Event('scroll'));
+  };
+}
+
 afterEach(() => vi.restoreAllMocks());
 
 afterAll(() => {
@@ -138,5 +151,26 @@ it('unregisters a completed scoped Anime SVG tween and leaves its final value in
   } finally {
     scope.revert();
     stateManager.cancelAll();
+  }
+});
+
+it('keeps an autoplay timeline paused between Motion scroll updates', async () => {
+  const scrollTo = makeScroller();
+  const scope = createScope();
+  const target = { value: 0 };
+  const timeline = scope.timeline({ defaults: { duration: 1, ease: 'linear' } })
+    .add(target as unknown as MorphTargets, { value: 100 });
+  scope.scroll(timeline);
+
+  try {
+    await vi.advanceTimersByTimeAsync(240);
+    expect(target.value).toBe(0);
+    scrollTo(200);
+    await vi.advanceTimersByTimeAsync(240);
+    expect(target.value).toBeCloseTo(50);
+    await vi.advanceTimersByTimeAsync(240);
+    expect(target.value).toBeCloseTo(50);
+  } finally {
+    scope.revert();
   }
 });

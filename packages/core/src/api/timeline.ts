@@ -18,6 +18,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
   const builderSteps: Array<(t: MorphTimeline) => void> = [];
   let realTimeline: MorphTimeline | null = null;
   let canceled = false;
+  let autoplay = options?.autoplay !== false;
   const pendingActions: Array<(t: MorphTimeline) => void> = [];
 
   let finishedResolve: () => void;
@@ -76,14 +77,14 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     }
 
     try {
-      const rt = adapter.timeline(segments, options);
+      const rt = adapter.timeline(segments, autoplay ? options : { ...options, autoplay: false });
       initRealTimeline(rt);
       return rt;
     } catch {
       if (adapter.ensure) {
         adapter.ensure().then(() => {
           if (!canceled && !realTimeline && adapter.timeline) {
-            const rt = adapter.timeline(segments, options);
+            const rt = adapter.timeline(segments, autoplay ? options : { ...options, autoplay: false });
             initRealTimeline(rt);
           }
         });
@@ -135,6 +136,7 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
     },
 
     pause() {
+      autoplay = false;
       if (realTimeline) realTimeline.pause();
       else pendingActions.push((t) => t.pause());
     },
@@ -206,9 +208,9 @@ export function timeline(options?: TimelineOptions): MorphTimeline {
 
   // Auto-play unless explicitly disabled — deferred by one microtask
   // so the builder pattern can collect segments synchronously first
-  if (options?.autoplay !== false) {
+  if (autoplay) {
     Promise.resolve().then(() => {
-      if (!canceled) tl.play();
+      if (autoplay && !canceled) tl.play();
     });
   }
 
