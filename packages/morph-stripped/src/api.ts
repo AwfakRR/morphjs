@@ -7,7 +7,11 @@ import { loadMotion, loadAnime, loadGsapCore, loadScrollTrigger, loadMorphSVG, l
 
 export type AnimateArg = MorphAnimationOptions | number;
 
+const noop = () => {};
+const mkd = (cancel?: () => void): MorphControls => ({ play: noop, pause: noop, reverse: noop, cancel: cancel ?? noop, finish: noop, restart: noop, seek: noop, progress: 0, currentTime: 0, playState: cancel ? 'running' : 'idle', finished: Promise.resolve(), then: (f) => Promise.resolve().then(f), commitStyles: noop });
+
 export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: AnimateArg): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
   const e = o.engine || o.adapter;
   if (e === 'gsap') return createDeferred(() => loadGsapFor(props), ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
@@ -18,6 +22,7 @@ export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: An
 }
 
 export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: MorphSpringOptions): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   return createDeferred(loadMotion, (m) => runSpring(m, tgts, props, opt));
 }
 
@@ -128,18 +133,33 @@ export function stagger(v: number, o?: MorphStaggerOptions): any {
   };
 }
 
-const noop = () => {};
-const mkd = (c: any) => ({ play: noop, pause: noop, reverse: noop, cancel: c, finish: noop, restart: noop, seek: noop, progress: 0, currentTime: 0, playState: 'running' as const, finished: Promise.resolve(), then: (f: any) => Promise.resolve().then(f), commitStyles: noop });
-
 export function scroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOptions): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
   if (o?.pin || o?.scrub || o?.engine === 'gsap') {
     return createDeferred(() => loadScrollTrigger().then(m => m.ScrollTrigger ? m : loadMotion(), () => loadMotion()), (m) => {
       if (m.ScrollTrigger) {
+        const vars = {
+          trigger: o?.target || document.documentElement,
+          scroller: o?.container,
+          start: 'top top',
+          end: 'bottom bottom',
+          pin: o?.pin ?? false,
+        };
         if (typeof a === 'function') {
-          const trigger = m.ScrollTrigger.create({ trigger: o?.target || document.documentElement, scroller: o?.container, start: 'top top', end: 'bottom bottom', pin: o?.pin ?? false, scrub: o?.scrub ?? false, onUpdate: (s: any) => a(s.progress) });
+          const trigger = m.ScrollTrigger.create({ ...vars, scrub: o?.scrub ?? false, onUpdate: (s: { progress: number }) => a(s.progress) });
           return mkd(() => trigger.kill());
         }
-        return wrap(m.gsap.to({}, { scrollTrigger: { trigger: o?.target || document.documentElement, scroller: o?.container, pin: o?.pin ?? false, scrub: o?.scrub ?? true, start: 'top top', end: 'bottom bottom' } }), 'g');
+        a.pause();
+        const playhead = { progress: 0 };
+        const animation = m.gsap.to(playhead, {
+          progress: 1,
+          duration: 1,
+          ease: 'none',
+          paused: true,
+          onUpdate: () => a.seek?.(playhead.progress * (a.duration ?? 0)),
+        });
+        m.ScrollTrigger.create({ ...vars, scrub: o?.scrub ?? true, animation });
+        return wrap(animation, 'g');
       }
       const r = m.scroll(a, o);
       return typeof a === 'function' ? mkd(() => { if (typeof r === 'function') r(); }) : a;

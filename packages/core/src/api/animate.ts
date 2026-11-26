@@ -2,6 +2,7 @@
 import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls } from '../types';
 import { resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
+import { createNoopControls } from '../utils/controls';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { createDeferredControls } from '../utils/deferred-controls';
@@ -31,6 +32,10 @@ export function animate(
   properties: Record<string, any>,
   options: AnimateArg = {}
 ): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return createNoopControls();
+  }
+
   let opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;

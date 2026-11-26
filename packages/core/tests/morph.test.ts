@@ -10,6 +10,11 @@ describe('MorphJS Core API', () => {
     expect(typeof controls.pause).toBe('function');
   });
 
+  it('should resolve animation completion in non-browser environment', async () => {
+    const controls = morph({ style: {} } as any, { opacity: 1 }, 0.5);
+    await expect(controls.finished).resolves.toBeUndefined();
+  });
+
   it('should expose sub-APIs on morph function', () => {
     expect(typeof morph.animate).toBe('function');
     expect(typeof morph.timeline).toBe('function');

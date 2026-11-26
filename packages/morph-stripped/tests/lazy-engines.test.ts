@@ -21,6 +21,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 it('loads only the engine and GSAP plugin requested by each operation', async () => {
   vi.stubGlobal('window', new EventTarget());
+  vi.stubGlobal('document', new EventTarget());
   const { animate, scroll: trackScroll, loadGsap } = await import('../src/index');
   await vi.dynamicImportSettled();
   expect(motion).not.toHaveBeenCalled();

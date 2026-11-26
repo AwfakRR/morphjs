@@ -3,8 +3,8 @@ import { resolveAdapter } from '../router';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { resolveTargets } from '../utils/targets';
+import { createNoopControls } from '../utils/controls';
 import { animate } from './animate';
-import { createNoopControls } from './scroll';
 
 /**
  * SVG animation utilities — morph paths, draw strokes, animate attributes.

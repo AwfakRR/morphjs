@@ -1,4 +1,4 @@
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import type { MorphTargets } from '../src/types';
 
 const { loadAnime, animateMotion } = vi.hoisted(() => ({
@@ -13,7 +13,17 @@ vi.mock('animejs', async importOriginal => {
 });
 vi.mock('motion', () => ({ animate: animateMotion }));
 
+afterEach(() => vi.unstubAllGlobals());
+
 it('uses Anime grid offsets on a first animation without preloading Anime', async () => {
+  vi.stubGlobal('window', {});
+  vi.stubGlobal('document', new EventTarget());
+  vi.stubGlobal('Element', class {});
+  vi.stubGlobal('SVGElement', class {});
+  vi.stubGlobal('NodeList', class {});
+  vi.stubGlobal('HTMLCollection', class {});
+  vi.stubGlobal('requestAnimationFrame', () => 0);
+  vi.stubGlobal('cancelAnimationFrame', () => {});
   const { animate, stagger } = await import('../src/index');
   const delay = stagger(0.05, { grid: [3, 3], from: 'center' });
   await vi.dynamicImportSettled();

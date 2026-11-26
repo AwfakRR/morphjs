@@ -4,29 +4,7 @@ import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
-
-/**
- * Creates a no-op MorphControls instance for SSR fallbacks.
- */
-export function createNoopControls(): MorphControls {
-  return {
-    play: () => {},
-    pause: () => {},
-    reverse: () => {},
-    cancel: () => {},
-    finish: () => {},
-    restart: () => {},
-    progress: 0,
-    currentTime: 0,
-    playState: 'idle',
-    finished: Promise.resolve(),
-    then: function(onFulfilled) {
-      if (onFulfilled) onFulfilled();
-      return Promise.resolve();
-    },
-    commitStyles: () => {}
-  };
-}
+import { createNoopControls } from '../utils/controls';
 
 /**
  * Create a scroll-linked animation.
