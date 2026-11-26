@@ -163,32 +163,42 @@ export const animeAdapter: IAnimationAdapter = {
 
     const pauses: Array<{ position: number; callback?: () => void }> = [];
     let previousPosition = 0;
+    let startPending = true;
     const tl = anime.createTimeline({
       autoplay: options?.autoplay ?? true,
       defaults,
       onBeforeUpdate() {
         if (pauses.length === 0 || tl.paused) return;
-        const position = tl.iterationCurrentTime;
+        // The rounded time getters can stop short of a fractional end marker.
+        const atEnd = tl.progress === 1;
+        const position = atEnd ? (tl.reversed ? 0 : tl.iterationDuration) : tl.iterationCurrentTime;
         if (position === previousPosition) return;
 
         const forward = position > previousPosition;
         let marker: (typeof pauses)[number] | undefined;
         for (const pause of pauses) {
           const at = pause.position;
-          const crossed = forward ? previousPosition < at && at <= position : position <= at && at < previousPosition;
+          const atStart = startPending && previousPosition === 0 && at === 0;
+          const crossed = forward
+            ? (previousPosition < at || atStart) && at <= position
+            : position <= at && at < previousPosition;
           if (crossed && (!marker || (forward ? at < marker.position : at > marker.position))) marker = pause;
         }
+        startPending = false;
         if (!marker) {
           previousPosition = position;
           return;
         }
 
         // Rewind the unrendered tick, then render to the marker with tween callbacks enabled.
-        const time = tl.currentTime;
+        const callbacks = pauses.filter((pause) => pause.position === marker.position);
+        const time = atEnd ? tl.duration : tl.currentTime;
         tl.pause().seek(time - Math.abs(position - previousPosition), true);
         previousPosition = marker.position;
         tl.seek(time - Math.abs(position - marker.position));
-        if (marker.callback) queueMicrotask(marker.callback);
+        for (const { callback } of callbacks) {
+          if (callback) queueMicrotask(callback);
+        }
       },
     });
 
@@ -199,20 +209,21 @@ export const animeAdapter: IAnimationAdapter = {
     }
 
     const controls = wrapAnimeControls(tl);
-    const syncPlayhead = <Args extends unknown[]>(action: (...args: Args) => void) =>
+    const syncPlayhead = <Args extends unknown[]>(action: (...args: Args) => void, resetStart = false) =>
       (...args: Args) => {
         action(...args);
         previousPosition = tl.iterationCurrentTime;
+        if (resetStart) startPending = previousPosition === 0;
       };
 
     // Extend with timeline-specific methods
     return {
       ...controls,
       play: syncPlayhead(controls.play),
-      seek: syncPlayhead(controls.seek!),
-      cancel: syncPlayhead(controls.cancel),
+      seek: syncPlayhead(controls.seek!, true),
+      cancel: syncPlayhead(controls.cancel, true),
       finish: syncPlayhead(controls.finish),
-      restart: syncPlayhead(controls.restart),
+      restart: syncPlayhead(controls.restart, true),
       reverse: syncPlayhead(controls.reverse),
       get duration() {
         return (tl.duration || 0) / 1000;

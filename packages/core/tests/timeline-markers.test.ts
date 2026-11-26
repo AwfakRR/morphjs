@@ -196,4 +196,61 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
       tl.cancel();
     }
   });
+
+  it('fires every callback at a shared checkpoint', async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 1 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+      .addPause(0.2, first)
+      .addPause(0.2, second);
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(tl.currentTime).toBeCloseTo(0.2);
+      expect(tl.playState).toBe('paused');
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+    } finally {
+      tl.cancel();
+    }
+  });
+
+  it('fires a final pause with a fractional position', async () => {
+    const onPause = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 0.1 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+      .addPause(0.1 + 0.2, onPause);
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(onPause).toHaveBeenCalledOnce();
+    } finally {
+      tl.cancel();
+    }
+  });
+});
+
+it('stops at an Anime pause at zero without stopping there again on resume', async () => {
+  const onPause = vi.fn();
+  const tl = timeline({ engine: 'anime', autoplay: false, defaults: { duration: 1 } })
+    .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+    .addPause(0, onPause);
+
+  try {
+    tl.play();
+    await vi.advanceTimersByTimeAsync(400);
+    expect(onPause).toHaveBeenCalledOnce();
+    expect(tl.currentTime).toBe(0);
+    expect(tl.playState).toBe('paused');
+
+    tl.play();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(tl.playState).toBe('finished');
+    expect(onPause).toHaveBeenCalledOnce();
+  } finally {
+    tl.cancel();
+  }
 });
