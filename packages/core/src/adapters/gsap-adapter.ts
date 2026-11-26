@@ -267,11 +267,6 @@ export const gsapAdapter: IAnimationAdapter = {
     }
     const horizontal = options?.axis === 'x';
     const leadingEdge = horizontal ? 'left' : 'top';
-    const pinEnd = () => {
-      const scroller = options?.container ?? root;
-      const size = horizontal ? scroller?.clientWidth : scroller?.clientHeight;
-      return `clamp(${leadingEdge}+=${size ?? 0}px ${leadingEdge})`;
-    };
     const [start, end] = options?.offset ?? [];
     const fullScrollerRange = !options?.target && !pin && !options?.offset;
     const vars = {
@@ -281,7 +276,7 @@ export const gsapAdapter: IAnimationAdapter = {
       start: fullScrollerRange ? 0
         : start === undefined ? `${leadingEdge} ${leadingEdge}` : toScrollTriggerOffset(start, horizontal),
       end: fullScrollerRange ? 'max' : end === undefined
-        ? (pin ? pinEnd : horizontal ? 'right right' : 'bottom bottom')
+        ? (pin ? `clamp(${leadingEdge} ${leadingEdge}-=100%)` : horizontal ? 'right right' : 'bottom bottom')
         : toScrollTriggerOffset(end, horizontal),
       pin,
     };

@@ -160,10 +160,18 @@ describe('core scroll routing', () => {
     create.mockReturnValue({ kill: vi.fn() });
     await scroll(vi.fn(), { target: shortTarget, container, pin: true }).finished;
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
-      trigger: shortTarget, pin: true, start: 'top top', end: expect.any(Function),
+      trigger: shortTarget, pin: true, start: 'top top', end: 'clamp(top top-=100%)',
     }));
-    const [{ end }] = create.mock.lastCall!;
-    expect(end()).toBe('clamp(top+=600px top)');
+  });
+
+  it('lets GSAP size the default pin range against the viewport for an explicit body scroller', async () => {
+    const body = { clientHeight: 1760 } as Element;
+    vi.stubGlobal('document', { documentElement: root, body });
+    create.mockReturnValue({ kill: vi.fn() });
+    await scroll(vi.fn(), { target, container: body, pin: true }).finished;
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      scroller: body, start: 'top top', end: 'clamp(top top-=100%)',
+    }));
   });
 
   it.each([
