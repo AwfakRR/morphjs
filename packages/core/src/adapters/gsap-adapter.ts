@@ -123,8 +123,11 @@ function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOpt
   const delay = options?.delay;
   if (typeof delay === 'function') {
     vars.delay = (index: number, _target: unknown, targets: unknown[]) => delay(index, targets.length);
-  } else if (delay !== undefined) {
+  } else if (typeof delay === 'number') {
     vars.delay = delay;
+  } else if (delay !== undefined) {
+    // stagger() with advanced options returns GSAP stagger vars ({ each, grid, from, ease }).
+    vars.stagger = delay;
   }
   if (ease !== undefined) vars.ease = toGsapEasing(ease);
   if (options?.repeat !== undefined) vars.repeat = options.repeat === Infinity ? -1 : options.repeat;

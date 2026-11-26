@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { animate, configure } from '../src/index';
+import { animate, configure, stagger } from '../src/index';
 import { resolveAdapter } from '../src/router';
-import { gsapAdapter } from '../src/adapters/gsap-adapter';
+import { ensureGsap, gsapAdapter } from '../src/adapters/gsap-adapter';
 import { animeAdapter } from '../src/adapters/anime-adapter';
 import { motionAdapter } from '../src/adapters/motion-adapter';
 import { createNoopControls } from '../src/utils/controls';
@@ -38,6 +38,18 @@ describe('configure({ defaultAdapter })', () => {
     configure({ defaultAdapter: 'gsap' });
 
     expect(resolveAdapter({ timeline: true })).toBe(gsapAdapter);
+  });
+
+  it('applies advanced stagger delays on the default GSAP adapter', async () => {
+    configure({ defaultAdapter: 'gsap' });
+    const { gsap } = await ensureGsap();
+    const targets = [{ x: 0 }, { x: 0 }, { x: 0 }];
+
+    animate(targets, { x: 100 }, { duration: 1, ease: 'linear', delay: stagger(0.5, { grid: [3, 1] }) });
+    gsap.getTweensOf(targets[0])[0].pause().totalTime(0.75);
+
+    expect(targets[0].x).toBe(75);
+    expect(targets[2].x).toBe(0);
   });
 
   it('keeps capability routing when the default adapter lacks the capability', () => {
