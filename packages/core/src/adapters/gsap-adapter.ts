@@ -178,7 +178,7 @@ export const gsapAdapter: IAnimationAdapter = {
     const from: Record<string, any> = {};
     const toProps: Record<string, any> = {};
     for (const [key, value] of Object.entries(properties)) {
-      if (key !== 'keyframes' && key !== 'ease' && Array.isArray(value) && value.length === 2) {
+      if (key !== 'keyframes' && key !== 'ease' && key !== 'endArray' && Array.isArray(value) && value.length === 2) {
         from[key] = value[0];
         toProps[key] = value[1];
       } else {

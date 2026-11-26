@@ -11,6 +11,7 @@ import type {
   MorphTargets,
 } from '../types';
 import { getConfig, resolveAdapter, shouldReduceMotion } from '../router';
+import { adapterRegistry } from '../adapters/adapter';
 import { resolveTargets } from '../utils/targets';
 import { createNoopControls, groupControls, onControlsCancel } from '../utils/controls';
 import { createDeferredControls } from '../utils/deferred-controls';
@@ -256,11 +257,19 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
     ease,
   };
 
-  const restoreTransform = (entry: MeasuredEntry) => {
-    if (prune && isStyledElement(entry.element)) {
+  const clearInlineTransform = (entry: MeasuredEntry) => {
+    if (isStyledElement(entry.element)) {
       entry.element.style.transform = entry.savedTransform ?? '';
     }
   };
+
+  const restoreTransform = (entry: MeasuredEntry) => {
+    if (prune) {
+      clearInlineTransform(entry);
+    }
+  };
+
+  let supersededAll = false;
 
   const startEntries = (
     backend: IAnimationAdapter,
@@ -271,12 +280,41 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       return createNoopControls();
     }
     if (backend.layout) {
-      return backend.layout(activeEntries, resolvedOpts);
+      const ctrl = backend.layout(activeEntries, resolvedOpts);
+      const baseFinished = ctrl.finished;
+      let resolveSuperseded: (() => void) | undefined;
+      const superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+      const cleanup = () => {
+        for (const entry of activeEntries) {
+          if (activeFlips.get(entry.element) === active) {
+            activeFlips.delete(entry.element);
+          }
+        }
+      };
+      const active = {
+        cancel: () => {
+          supersededAll = true;
+          ctrl.cancel();
+          cleanup();
+          resolveSuperseded?.();
+        },
+      };
+      for (const entry of activeEntries) {
+        activeFlips.set(entry.element, active);
+      }
+      onControlsCancel(ctrl, cleanup);
+      void baseFinished.then(cleanup, cleanup);
+      const settled = Promise.race([baseFinished, superseded]);
+      return Object.create(ctrl, {
+        finished: { get: () => settled },
+        then: { value: (onFulfilled: any, onRejected: any) => settled.then(onFulfilled, onRejected) },
+      }) as MorphControls;
     }
 
     const { delay, onStart, onUpdate, onComplete, onCancel, scale: _s, spring: _sp, targets: _t, fade: _f, prune: _p, ...shared } = resolvedOpts;
     const startOnce = once(onStart);
     const cancelOnce = once(onCancel);
+    let supersededCount = 0;
 
     const perElement = activeEntries.map((entry, index) => {
       const elDelay = typeof delay === 'function' ? delay(index, activeEntries.length) : delay;
@@ -291,7 +329,14 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
         ? backend.spring([entry.element], entry.properties, springOpts, elOpts)
         : backend.animate([entry.element], entry.properties, elOpts);
 
+      // Read ctrl.finished once so thenables like Anime.js v4 don't drop earlier subscribers.
+      const baseFinished = ctrl.finished;
+      let resolveSuperseded: (() => void) | undefined;
+      const superseded = new Promise<void>(resolve => { resolveSuperseded = resolve; });
+      let cleaned = false;
       const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
         if (activeFlips.get(entry.element) === active) {
           activeFlips.delete(entry.element);
         }
@@ -299,20 +344,33 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       };
       const active = {
         cancel: () => {
+          supersededCount++;
+          if (supersededCount >= activeEntries.length) {
+            supersededAll = true;
+          }
           ctrl.cancel();
           cleanup();
+          resolveSuperseded?.();
         },
       };
       activeFlips.set(entry.element, active);
       onControlsCancel(ctrl, cleanup);
-      void ctrl.finished.then(cleanup, cleanup);
+      void baseFinished.then(cleanup, cleanup);
 
-      return ctrl;
+      const elementFinished = Promise.race([baseFinished, superseded]);
+      return Object.create(ctrl, {
+        finished: { get: () => elementFinished },
+        then: { value: (onFulfilled: any, onRejected: any) => elementFinished.then(onFulfilled, onRejected) },
+      }) as MorphControls;
     });
 
     return groupControls(
       perElement,
-      onComplete,
+      () => {
+        if (supersededCount < activeEntries.length) {
+          onComplete?.();
+        }
+      },
       backend === motionAdapter ? control => control.seek?.(0) : undefined,
     );
   };
@@ -330,7 +388,7 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
           if (activeFlips.get(entry.element) === active) {
             activeFlips.delete(entry.element);
           }
-          restoreTransform(entry);
+          clearInlineTransform(entry);
         },
       };
       activeFlips.set(entry.element, active);
@@ -355,7 +413,26 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
 
     try {
       if (pendingDelay) resolvedOpts = { ...animationOptions, delay: await pendingDelay };
-      await adapter.ensure?.();
+      let chosenAdapter = adapter;
+      try {
+        await chosenAdapter.ensure?.();
+      } catch (loadErr) {
+        if (opts.adapter || opts.engine) throw loadErr;
+        let recovered = false;
+        for (const fallbackName of ['anime', 'gsap']) {
+          const fallback = adapterRegistry.get(fallbackName);
+          if (!fallback || fallback === chosenAdapter) continue;
+          try {
+            await fallback.ensure?.();
+            chosenAdapter = fallback;
+            recovered = true;
+            break;
+          } catch {
+            // Try next installed engine.
+          }
+        }
+        if (!recovered) throw loadErr;
+      }
       stopCancelWatch();
       if (canceledBeforeStart) {
         deferred.resolve(createNoopControls());
@@ -363,11 +440,9 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
       }
       const remaining = entries.filter(entry => activeFlips.get(entry.element) === pendingHandles.get(entry.element));
       for (const entry of remaining) {
-        if (isStyledElement(entry.element)) {
-          entry.element.style.transform = entry.savedTransform ?? '';
-        }
+        clearInlineTransform(entry);
       }
-      deferred.resolve(startEntries(adapter, resolvedOpts, remaining));
+      deferred.resolve(startEntries(chosenAdapter, resolvedOpts, remaining));
     } catch (err) {
       stopCancelWatch();
       for (const [el, handle] of pendingHandles) {
@@ -396,6 +471,11 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
   }
 
   const id = stateManager.register(animControls, elements);
+  let canceled = false;
+  onControlsCancel(animControls, () => {
+    canceled = true;
+    stateManager.unregister(id);
+  });
 
   animationEvents.emit('start', {
     type: 'start',
@@ -405,12 +485,14 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
   });
 
   animControls.finished.then(() => {
-    animationEvents.emit('complete', {
-      type: 'complete',
-      target: elements,
-      controls: animControls,
-      timestamp: Date.now(),
-    });
+    if (!canceled && !supersededAll) {
+      animationEvents.emit('complete', {
+        type: 'complete',
+        target: elements,
+        controls: animControls,
+        timestamp: Date.now(),
+      });
+    }
     stateManager.unregister(id);
   }, () => stateManager.unregister(id));
 
@@ -432,6 +514,9 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
  */
 export const flip: FlipCallable = Object.assign(
   (targets: MorphTargets, mutate: () => void, options?: FlipArg): MorphControls => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return createNoopControls();
+    }
     const state = capture(targets);
     mutate();
     return from(state, options);

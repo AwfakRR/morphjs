@@ -70,5 +70,12 @@ describe('MorphJS Core API', () => {
     const controls = flip.from(state, 0.3);
     expect(controls).toBeDefined();
     await expect(controls.finished).resolves.toBeUndefined();
+
+    const mutate = () => {
+      throw new Error('mutate should not run during SSR');
+    };
+    const oneStep = flip('.card', mutate, 0.3);
+    expect(oneStep).toBeDefined();
+    await expect(oneStep.finished).resolves.toBeUndefined();
   });
 });

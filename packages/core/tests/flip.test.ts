@@ -520,5 +520,126 @@ describe('Core layout FLIP transitions', () => {
     await c2.finished;
     // Animate was only called once for el2 (the initial throw), never started after cancel
     expect(animateSpy).toHaveBeenCalledTimes(3);
+
+    // 3. Canceled deferred load with prune: false still clears temporary pending invert
+    loaded = false;
+    const el3 = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const c3 = flip(el3 as any, () => el3.setRect({ left: 80, top: 0 }), { adapter: lazyAdapter.name, prune: false });
+    expect(el3.style.transform).toBe('translate3d(-80px, 0px, 0)');
+    c3.cancel();
+    expect(el3.style.transform).toBe('');
+    resolveEnsure();
+    await c3.finished;
+  });
+
+  it('settles and unregisters superseded transitions even when canceled animation never resolves finished', async () => {
+    const first = createManualControls();
+    const second = createManualControls();
+    vi.spyOn(motionAdapter, 'animate')
+      .mockReturnValueOnce(first.controls)
+      .mockReturnValueOnce(second.controls);
+
+    const onFirstComplete = vi.fn();
+    const el = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const c1 = flip(el as any, () => el.setRect({ left: 100, top: 0 }), { onComplete: onFirstComplete });
+    expect(stateManager.count).toBe(1);
+
+    const c2 = flip(el as any, () => el.setRect({ left: 200, top: 0 }));
+    await c1.finished;
+    await Promise.resolve();
+
+    expect(first.cancelSpy).toHaveBeenCalledOnce();
+    expect(onFirstComplete).not.toHaveBeenCalled();
+    expect(stateManager.count).toBe(1);
+
+    second.complete();
+    await c2.finished;
+    await Promise.resolve();
+    expect(stateManager.count).toBe(0);
+  });
+
+  it('reads ctrl.finished once so single-resolver thenables (Anime.js v4) still prune transforms', async () => {
+    let resolver: (() => void) | undefined;
+    const singleSubscriberThenable = {
+      then(onFulfilled?: () => void) {
+        resolver = onFulfilled;
+      },
+    };
+    const el = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const singleSubControls: MorphControls = {
+      play: () => {},
+      pause: () => {},
+      reverse: () => {},
+      cancel: () => {},
+      finish: () => {},
+      restart: () => {},
+      duration: 0.4,
+      progress: 0,
+      currentTime: 0,
+      playState: 'running',
+      commitStyles: () => {},
+      get finished() {
+        return Promise.resolve(singleSubscriberThenable as any);
+      },
+      then(onFulfilled, onRejected) {
+        return Promise.resolve(singleSubscriberThenable as any).then(onFulfilled, onRejected);
+      },
+    };
+    vi.spyOn(motionAdapter, 'animate').mockImplementation(() => {
+      el.style.transform = 'translateX(0px)';
+      return singleSubControls;
+    });
+
+    const controls = flip(el as any, () => el.setRect({ left: 100, top: 0 }));
+    expect(controls.duration).toBe(0.4);
+    expect(el.style.transform).toBe('translateX(0px)');
+
+    // Promise.resolve(thenable) invokes thenable.then() on the next microtask
+    await Promise.resolve();
+    expect(resolver).toBeTypeOf('function');
+    resolver?.();
+    await controls.finished;
+    expect(el.style.transform).toBe('');
+  });
+
+  it('falls back to another installed engine when default motion peer fails to load', async () => {
+    const manual = createManualControls();
+    vi.spyOn(motionAdapter, 'animate').mockImplementation(() => {
+      throw new Error('motion not loaded');
+    });
+    vi.spyOn(motionAdapter, 'ensure').mockRejectedValueOnce(new Error('Cannot find package motion'));
+    vi.spyOn(animeAdapter, 'ensure').mockResolvedValueOnce({} as any);
+    const animeSpy = vi.spyOn(animeAdapter, 'animate').mockReturnValueOnce(manual.controls);
+
+    const el = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const controls = flip(el as any, () => el.setRect({ left: 120, top: 0 }));
+
+    await vi.waitFor(() => expect(animeSpy).toHaveBeenCalledOnce());
+    manual.complete();
+    await controls.finished;
+  });
+
+  it('cancels previous custom layout adapter run when superseded', async () => {
+    const first = createManualControls();
+    const second = createManualControls();
+    const layoutSpy = vi.fn()
+      .mockReturnValueOnce(first.controls)
+      .mockReturnValueOnce(second.controls);
+    const custom: IAnimationAdapter = {
+      name: 'custom-layout-interrupt',
+      capabilities: ['layout'],
+      animate: () => createNoopControls(),
+      layout: layoutSpy,
+    };
+    adapterRegistry.register({ name: custom.name, adapter: custom, priority: 1, capabilities: ['layout'] });
+
+    const el = new FakeElement({ left: 0, top: 0, width: 100, height: 100 });
+    const c1 = flip(el as any, () => el.setRect({ left: 100, top: 0 }), { adapter: custom.name });
+    const c2 = flip(el as any, () => el.setRect({ left: 200, top: 0 }), { adapter: custom.name });
+
+    await c1.finished;
+    expect(first.cancelSpy).toHaveBeenCalledOnce();
+    second.complete();
+    await c2.finished;
   });
 });

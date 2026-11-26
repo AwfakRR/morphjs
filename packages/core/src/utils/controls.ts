@@ -90,6 +90,12 @@ export function groupControls(
     },
     seek: time => controls.forEach(control => control.seek?.(time)),
     commitStyles: () => controls.forEach(control => control.commitStyles()),
+    get duration() {
+      const durations = controls
+        .map(control => control.duration)
+        .filter((d): d is number => typeof d === 'number');
+      return durations.length ? Math.max(...durations) : undefined;
+    },
     get progress() { return Math.min(...controls.map(control => control.progress)); },
     get currentTime() { return first.currentTime; },
     get playState() {
