@@ -3,7 +3,7 @@ import type {
   MorphScrollOptions, MorphGestureOptions, MorphSvgOptions, TimelineOptions,
   MorphControls, MorphTimeline,
 } from './types';
-import { loadMotion, loadAnime, loadGsap, wrap, createDeferred, toAnimeOptions, toGsapOptions, runSpring } from './engine';
+import { loadMotion, loadAnime, loadGsap, wrap, createDeferred, toAnimeOptions, toAnimePosition, toGsapOptions, runSpring } from './engine';
 
 export type AnimateArg = MorphAnimationOptions | number;
 
@@ -22,7 +22,7 @@ export function spring(tgts: MorphTargets, props: Record<string, any>, opt?: Mor
 }
 
 export function timeline(opt?: TimelineOptions): MorphTimeline {
-  const seq: Array<{ t: any; p: any; o?: any }> = [];
+  const seq: Array<{ t: any; p: any; o?: string | number }> = [];
   let realTl: any = null;
   const useGsap = opt?.engine === 'gsap';
   let activeEngine: 'g' | 'a' = useGsap ? 'g' : 'a';
@@ -32,7 +32,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
       autoplay: opt?.autoplay ?? true,
       defaults: opt?.defaults ? toAnimeOptions(opt.defaults) : undefined,
     });
-    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p), s.o));
+    seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p), toAnimePosition(s.o)));
     realTl = tl;
     return wrap(tl, 'a');
   };
@@ -58,10 +58,10 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
 
   const tlo: MorphTimeline = {
     ...deferred,
-    add(t: any, p: any, o?: any) {
+    add(t: any, p: any, o?: string | number) {
       if (realTl) {
         if (activeEngine === 'g') realTl.to(t, toGsapOptions(p), o);
-        else realTl.add(t, toAnimeOptions(p), o);
+        else realTl.add(t, toAnimeOptions(p), toAnimePosition(o));
       } else {
         seq.push({ t, p, o });
       }

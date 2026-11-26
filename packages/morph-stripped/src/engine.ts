@@ -100,6 +100,14 @@ export function toAnimeOptions(props: Record<string, any>, opt?: any): Record<st
   return r;
 }
 
+export function toAnimePosition(offset?: string | number): string | number | undefined {
+  if (typeof offset === 'number') return offset * 1000;
+  return offset?.replace(/([+-]=)([^=]+)$/, (position, operator, value) => {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) ? `${operator}${seconds * 1000}` : position;
+  });
+}
+
 const gmap: Record<string, string> = {
   linear: 'none', easeIn: 'power1.in', easeOut: 'power1.out', easeInOut: 'power1.inOut',
   easeInQuad: 'power2.in', easeOutQuad: 'power2.out', easeInOutQuad: 'power2.inOut',
