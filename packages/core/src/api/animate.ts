@@ -60,10 +60,12 @@ function runAnimation(
   }
 
   const opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
-  const springOpts: MorphSpringOptions | undefined =
-    opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
+  const reduceMotion = shouldReduceMotion();
+  const springOpts: MorphSpringOptions | undefined = reduceMotion
+    ? undefined
+    : opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
-  if (shouldReduceMotion()) {
+  if (reduceMotion) {
     opts.duration = 0;
   }
 

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { animate, spring } from '../src/index';
+import { animate, configure, spring } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 
 describe('Motion springs', () => {
@@ -78,5 +78,46 @@ describe('Motion springs', () => {
     expect(Math.abs(values[0] + 100)).toBeLessThan(5);
     expect(values).toContain(30);
     expect(values.at(-1)).toBe(0);
+  });
+});
+
+describe('Motion springs with reduced motion', () => {
+  beforeAll(async () => {
+    vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+    vi.stubGlobal('window', {});
+    vi.stubGlobal('document', new EventTarget());
+    vi.stubGlobal('Element', class {});
+    vi.stubGlobal('NodeList', class {});
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+      setTimeout(() => callback(performance.now()), 16)
+    );
+    vi.stubGlobal('cancelAnimationFrame', clearTimeout);
+    await ensureMotion();
+    configure({ reducedMotion: 'always' });
+  });
+
+  afterAll(() => {
+    configure({ reducedMotion: 'user' });
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it.each([
+    ['animate({ spring })', (proxy: any) => animate(proxy, { val: 100 }, { spring: { stiffness: 100, damping: 10 } })],
+    ['spring()', (proxy: any) => spring(proxy, { val: 100 })],
+    ['keyframe spring()', (proxy: any) => spring(proxy, { val: [0, 140, 100] }, {})],
+  ])('jumps %s straight to its final value', async (_, run) => {
+    const proxy = { val: 0 };
+    const controls = run(proxy);
+    const samples: number[] = [];
+
+    for (let elapsed = 0; elapsed < 1000; elapsed += 50) {
+      await vi.advanceTimersByTimeAsync(50);
+      samples.push(proxy.val);
+    }
+    await vi.advanceTimersByTimeAsync(3000);
+    await controls.finished;
+
+    expect(samples).toEqual(samples.map(() => 100));
   });
 });
