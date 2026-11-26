@@ -106,6 +106,7 @@ it('selects a clicked tab and moves focus and selection with arrows, Home and En
   expectSelection(3);
 
   tabs[1].dispatchEvent(new Event('click'));
+  expect(focused).toBe(tabs[1]);
   expectSelection(1);
   const arrowDown = Object.assign(new Event('keydown', { cancelable: true }), { key: 'ArrowDown' });
   tabs[1].dispatchEvent(arrowDown);

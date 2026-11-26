@@ -17,7 +17,10 @@ export function initFrameworkTabs(root: Document) {
   }
 
   tabs.forEach((tab, index) => {
-    tab.addEventListener('click', () => selectTab(index));
+    tab.addEventListener('click', () => {
+      selectTab(index);
+      tab.focus();
+    });
     tab.addEventListener('keydown', event => {
       if (event.ctrlKey || event.metaKey || event.altKey) return;
 
