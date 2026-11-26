@@ -19,6 +19,8 @@ export function initFrameworkTabs(root: Document) {
   tabs.forEach((tab, index) => {
     tab.addEventListener('click', () => selectTab(index));
     tab.addEventListener('keydown', event => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+
       let next: number;
       switch (event.key) {
         case 'ArrowLeft':

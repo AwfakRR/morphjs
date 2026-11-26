@@ -99,6 +99,12 @@ it('selects a clicked tab and moves focus and selection with arrows, Home and En
     expect(event.defaultPrevented).toBe(true);
     expectSelection(index);
   }
+  const ctrlHome = Object.assign(new Event('keydown', { cancelable: true }), { key: 'Home', ctrlKey: true });
+  tabs[3].dispatchEvent(ctrlHome);
+  expect(ctrlHome.defaultPrevented).toBe(false);
+  expect(focused).toBe(tabs[3]);
+  expectSelection(3);
+
   tabs[1].dispatchEvent(new Event('click'));
   expectSelection(1);
   const arrowDown = Object.assign(new Event('keydown', { cancelable: true }), { key: 'ArrowDown' });
