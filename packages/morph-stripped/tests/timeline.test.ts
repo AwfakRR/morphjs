@@ -251,6 +251,20 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
   }
 });
 
+it.each(['anime', 'gsap'] as const)('restarts a %s timeline cancelled before initialization', async (engine) => {
+  const child = timeline({ engine, autoplay: false }).add({ x: 0 }, { x: 100, duration: 2 });
+  const parent = timeline({ engine }).add(child);
+
+  try {
+    parent.cancel();
+    parent.restart();
+    await vi.waitFor(() => expect(parent.currentTime).toBeGreaterThan(0.05));
+    expect(parent.playState).toBe('running');
+  } finally {
+    parent.cancel();
+  }
+});
+
 it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as const)('seeks both Anime children sharing a target in a %s parent (prebuilt: %s)', async (engine, prebuilt) => {
   const target = { x: 0 };
   const first = timeline({ autoplay: false })

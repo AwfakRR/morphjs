@@ -74,6 +74,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (!realTl) seq.push(run);
     else run();
   };
+  const control = (run: () => void) => step(() => enqueue(run));
   const parkAnime = () => {
     if (state.parent && !realTl.cancelled) realTl.cancel();
   };
@@ -207,22 +208,24 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
       return tlo;
     },
     seek(position: Position) {
-      step(() => enqueue(() => { seek(position); }));
+      control(() => { seek(position); });
     },
     play(position?: Position) {
-      step(() => enqueue(() => {
+      control(() => {
         if (position === undefined || seek(position)) deferred.play();
-      }));
+      });
     },
-    pause() {
-      step(() => enqueue(deferred.pause));
-    },
+    pause: () => control(deferred.pause),
+    reverse: () => control(deferred.reverse),
+    restart: () => control(deferred.restart),
+    finish: () => control(deferred.finish),
+    commitStyles: () => control(deferred.commitStyles),
     cancel() {
       autoplay = false;
-      step(() => enqueue(() => {
+      control(() => {
         if (activeEngine === 'g') deferred.pause();
         deferred.cancel();
-      }));
+      });
     },
     get playState() { return deferred.playState; },
     get duration() {
