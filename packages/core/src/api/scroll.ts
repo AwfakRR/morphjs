@@ -4,8 +4,14 @@ import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { ensureScrollTrigger, gsapAdapter } from '../adapters/gsap-adapter';
 import { createDeferredControls } from '../utils/deferred-controls';
-import { createNoopControls } from '../utils/controls';
+import { createNoopControls, notifyControlsCanceled } from '../utils/controls';
 import { inView } from './in-view';
+
+const scrollTrackingControls = new WeakSet<MorphControls>();
+
+export function isScrollTracking(controls: MorphControls): boolean {
+  return scrollTrackingControls.has(controls);
+}
 
 /**
  * Create a scroll-linked animation.
@@ -62,11 +68,15 @@ function trackScroll(
     eventTarget.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
 
-    return {
+    const controls: MorphControls = {
       ...createNoopControls(),
-      cancel: () => eventTarget.removeEventListener('scroll', onScroll),
+      cancel: () => {
+        eventTarget.removeEventListener('scroll', onScroll);
+        notifyControlsCanceled(controls);
+      },
       playState: 'running',
     };
+    return controls;
   };
 
   let controls: MorphControls;
@@ -91,6 +101,8 @@ function trackScroll(
       controls = deferred.controls;
     }
   }
+
+  if (controls !== animationOrCallback) scrollTrackingControls.add(controls);
 
   const target = options?.target || document.documentElement;
   stateManager.register(controls, target);

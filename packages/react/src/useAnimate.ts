@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
-import { morph } from 'morphjs';
 import type { MorphAnimationOptions, MorphControls } from 'morphjs';
+import { useMorphScope } from './useMorphScope';
 
 /**
  * useAnimate hook allows scoping animations to a specific React element tree.
@@ -8,6 +8,7 @@ import type { MorphAnimationOptions, MorphControls } from 'morphjs';
  */
 export function useAnimate<T extends Element = HTMLElement>() {
   const scopeRef = useRef<T>(null);
+  const scope = useMorphScope();
 
   const animateScoped = useCallback(
     (
@@ -23,17 +24,17 @@ export function useAnimate<T extends Element = HTMLElement>() {
         if (scopeRef.current) {
           targets = Array.from(scopeRef.current.querySelectorAll(selectorOrTarget));
         }
-      } else if (selectorOrTarget instanceof Element) {
+      } else if (typeof Element !== 'undefined' && selectorOrTarget instanceof Element) {
         targets = [selectorOrTarget];
-      } else if (selectorOrTarget instanceof NodeList || Array.isArray(selectorOrTarget)) {
+      } else if (Array.isArray(selectorOrTarget) || (typeof NodeList !== 'undefined' && selectorOrTarget instanceof NodeList)) {
         targets = Array.from(selectorOrTarget as Iterable<Element>);
       }
 
       if (targets.length === 0) return null;
 
-      return morph.animate(targets, keyframes, options);
+      return scope.animate(targets, keyframes, options);
     },
-    []
+    [scope]
   );
 
   return [scopeRef, animateScoped] as const;

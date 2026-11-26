@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { animate, configure, scroll, stateManager } from '../src/index';
+import { animate, configure, createScope, scroll, stateManager } from '../src/index';
 import { createDeferredControls } from '../src/utils/deferred-controls';
 import { createNoopControls } from '../src/utils/controls';
 
@@ -36,6 +36,39 @@ describe('core scroll routing', () => {
     await controls.finished;
     expect(motionScroll).toHaveBeenCalledWith(callback, undefined);
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each(['motion', 'gsap'])('cleans up scoped %s scroll subscriptions after they are ready', async engine => {
+    const stop = vi.fn();
+    motionScroll.mockReturnValue(stop);
+    create.mockReturnValue({ kill: stop });
+    const scope = createScope();
+    const first = scope.scroll(vi.fn(), { engine });
+    const second = scope.scroll(vi.fn(), { engine });
+    await Promise.all([first.finished, second.finished]);
+    expect(scope.size).toBe(2);
+    first.cancel();
+    expect(scope.size).toBe(1);
+    scope.revert();
+    expect(stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('drives and stops a Motion scroll-linked animation through its core controls', async () => {
+    const stop = vi.fn();
+    motionScroll.mockReturnValue(stop);
+    const pause = vi.fn();
+    const seek = vi.fn();
+    const cancel = vi.fn();
+    const scope = createScope();
+    const controls = scope.scroll({ ...createNoopControls(), duration: 2, pause, seek, cancel });
+    await controls.finished;
+
+    motionScroll.mock.lastCall![0](0.4);
+    expect(pause).toHaveBeenCalledOnce();
+    expect(seek).toHaveBeenCalledWith(0.8);
+    scope.revert();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('honors a configured GSAP adapter for plain callback tracking', async () => {

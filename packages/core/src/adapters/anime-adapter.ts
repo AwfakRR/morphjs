@@ -241,11 +241,14 @@ export const animeAdapter: IAnimationAdapter = {
       };
 
     // Extend with timeline-specific methods
-    return {
+    const timeline: MorphTimeline = {
       ...controls,
       play: syncPlayhead(controls.play),
       seek: syncPlayhead(controls.seek!, true),
-      cancel: syncPlayhead(controls.cancel, true),
+      cancel: syncPlayhead(() => {
+        controls.cancel();
+        notifyControlsCanceled(timeline);
+      }, true),
       finish: syncPlayhead(controls.finish),
       restart: syncPlayhead(controls.restart, true),
       reverse: syncPlayhead(controls.reverse),
@@ -289,6 +292,7 @@ export const animeAdapter: IAnimationAdapter = {
         return this;
       },
     };
+    return timeline;
   },
 
   stagger(value: number, options?: MorphStaggerOptions): any {

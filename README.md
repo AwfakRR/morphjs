@@ -46,9 +46,9 @@ MorphJS comes in two editions tailored to your architecture:
    - **Size:** `~35 KB raw` / `~9 KB gzip`
 
 ### Framework Bindings
-- **`@morphjs/react`**: `useAnimate`, `useMorphSpring`, `useGesture`, `<MorphPresence>`
+- **`@morphjs/react`**: `useAnimate`, `useMorphScope`, `useMorphSpring`, `useGesture`, `<MorphPresence>`
 - **`@morphjs/vue`**: `useMorph`, `useMorphSpring`, `v-morph`, `<MorphTransition>`
-- **`@morphjs/svelte`**: `morphAction`, `gesture`, `morphTransition`, `springStore`
+- **`@morphjs/svelte`**: `morphAction`, `morphScope`, `gesture`, `morphTransition`, `springStore`
 - **`@morphjs/tanstack`**: Route transitions, table row reordering, virtual list animations
 
 ---
@@ -92,6 +92,25 @@ gesture('.draggable', {
 svg.draw('.my-path', { duration: 1.5 });
 svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
 ```
+
+### Animation Scopes
+
+In the full `morphjs` package, group animations and subscriptions for cleanup:
+
+```ts
+import morph from 'morphjs';
+
+const scope = morph.scope(); // or import and call createScope()
+scope.animate('.card', { opacity: [0, 1] }, 0.5);
+scope.gesture('.card', { hover: true });
+scope.revert(); // cancel tracked animations and remove listeners on teardown
+```
+
+Scopes also track `spring`, `timeline`, `scroll`, and `svg` calls. Use `scope.add(controlsOrCleanup)` to register your own cleanup. You can reuse the scope after calling `revert()`.
+
+- **React:** `useMorphScope()` reverts the scope on unmount. `useAnimate()` also cancels its animations on unmount.
+- **Vue:** Call `useMorph()` in setup to get animation methods that clean up on unmount.
+- **Svelte:** Call `morphScope()` during component initialization to revert the scope on destroy.
 
 ---
 

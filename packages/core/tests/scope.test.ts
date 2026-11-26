@@ -1,0 +1,123 @@
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
+import { animeAdapter, createScope, morph, motionAdapter, type MorphTargets } from '../src/index';
+import { ensureMotion } from '../src/adapters/motion-adapter';
+import { createDeferredControls } from '../src/utils/deferred-controls';
+
+beforeAll(async () => {
+  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+  vi.stubGlobal('window', {});
+  vi.stubGlobal('document', new EventTarget());
+  vi.stubGlobal('Element', class {});
+  vi.stubGlobal('HTMLElement', class {});
+  vi.stubGlobal('SVGElement', class {});
+  vi.stubGlobal('NodeList', class {});
+  vi.stubGlobal('HTMLCollection', class {});
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) =>
+    setTimeout(() => callback(performance.now()), 16)
+  );
+  vi.stubGlobal('cancelAnimationFrame', clearTimeout);
+  await Promise.all([ensureMotion(), animeAdapter.ensure!()]);
+});
+
+afterEach(() => vi.restoreAllMocks());
+
+afterAll(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+it('cancels running tweens, springs and timelines without signaling completion', async () => {
+  const scope = morph.scope();
+  const targets = Array.from({ length: 3 }, () => ({ value: 0 }));
+  const controls = [
+    scope.animate(targets[0] as unknown as MorphTargets, { value: 100 }, 1),
+    scope.spring(targets[1] as unknown as MorphTargets, { value: 100 }),
+    scope.timeline({ defaults: { duration: 1 } })
+      .add(targets[2] as unknown as MorphTargets, { value: 100 }),
+  ];
+  const finished = vi.fn();
+  controls.forEach(control => void control.finished.then(finished));
+  const cleanup = vi.fn();
+  vi.spyOn(motionAdapter, 'gesture').mockReturnValue({ cleanup });
+  scope.gesture([], { hover: true });
+
+  try {
+    await vi.advanceTimersByTimeAsync(96);
+    for (const { value } of targets) {
+      expect(value).toBeGreaterThan(0);
+      expect(value).toBeLessThan(100);
+    }
+    expect(scope.size).toBe(4);
+    scope.revert();
+    expect(scope.size).toBe(0);
+    expect(cleanup).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(32);
+    const stopped = targets.map(target => target.value);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(targets.map(target => target.value)).toEqual(stopped);
+    expect(finished).not.toHaveBeenCalled();
+  } finally {
+    scope.revert();
+  }
+});
+
+it('removes completed, canceled and rejected controls and supports reuse', async () => {
+  const scope = createScope();
+  const target = { value: 0 } as unknown as MorphTargets;
+  const finished = scope.animate(target, { value: 100 }, 0.1);
+  const canceled = scope.spring({ value: 0 } as unknown as MorphTargets, { value: -100 });
+  const rejected = createDeferredControls();
+  expect(scope.add(rejected.controls)).toBe(rejected.controls);
+  expect(scope.add(finished)).toBe(finished);
+  expect(scope.size).toBe(3);
+
+  canceled.cancel();
+  expect(scope.size).toBe(2);
+  rejected.reject(new Error('animation failed'));
+  await vi.advanceTimersByTimeAsync(300);
+  expect(scope.size).toBe(0);
+
+  scope.revert();
+  const cleanup = vi.fn();
+  scope.add(cleanup);
+  scope.revert();
+  scope.revert();
+  expect(cleanup).toHaveBeenCalledOnce();
+  expect(scope.size).toBe(0);
+});
+
+it('drops a canceled timeline before its scheduled autoplay can build it', async () => {
+  const scope = createScope();
+  const build = vi.spyOn(animeAdapter, 'timeline');
+  const target = { value: 0 };
+  const timeline = scope.timeline().add(target as unknown as MorphTargets, { value: 100 });
+
+  timeline.cancel();
+  expect(scope.size).toBe(0);
+  await vi.advanceTimersByTimeAsync(96);
+  expect(build).not.toHaveBeenCalled();
+  expect(target.value).toBe(0);
+});
+
+it('does not rerun a gesture cleanup that was already called', () => {
+  const scope = createScope();
+  const cleanup = vi.fn();
+  vi.spyOn(motionAdapter, 'gesture').mockReturnValue({ cleanup });
+  const stop = scope.gesture([], { hover: true });
+  stop();
+  scope.revert();
+  stop();
+  expect(scope.size).toBe(0);
+  expect(cleanup).toHaveBeenCalledOnce();
+});
+
+it('continues cleanup after an entry throws', () => {
+  const scope = createScope();
+  const error = new Error('cleanup failed');
+  const cleanup = vi.fn();
+  scope.add(() => { throw error; });
+  scope.add(cleanup);
+  expect(() => scope.revert()).toThrow(error);
+  expect(cleanup).toHaveBeenCalledOnce();
+  expect(scope.size).toBe(0);
+});
