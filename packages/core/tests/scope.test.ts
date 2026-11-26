@@ -1,10 +1,10 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { animeAdapter, createScope, morph, motionAdapter, type MorphTargets } from '../src/index';
+import { animeAdapter, createScope, morph, motionAdapter, stateManager, type MorphTargets } from '../src/index';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 import { createDeferredControls } from '../src/utils/deferred-controls';
 
 beforeAll(async () => {
-  vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
+  vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
   vi.stubGlobal('window', {});
   vi.stubGlobal('document', new EventTarget());
   vi.stubGlobal('Element', class {});
@@ -120,4 +120,23 @@ it('continues cleanup after an entry throws', () => {
   expect(() => scope.revert()).toThrow(error);
   expect(cleanup).toHaveBeenCalledOnce();
   expect(scope.size).toBe(0);
+});
+
+it('unregisters a completed scoped Anime SVG tween and leaves its final value intact', async () => {
+  const scope = createScope();
+  const target = { value: 0 };
+  const controls = scope.svg.attr(target as unknown as MorphTargets, { value: [0, 100] }, { duration: 0.1 });
+
+  try {
+    expect(stateManager.getRunning().some(item => item.controls === controls)).toBe(true);
+    await vi.advanceTimersByTimeAsync(320);
+    expect(target.value).toBe(100);
+    expect(scope.size).toBe(0);
+    expect(stateManager.getRunning().some(item => item.controls === controls)).toBe(false);
+    stateManager.cancelAll();
+    expect(target.value).toBe(100);
+  } finally {
+    scope.revert();
+    stateManager.cancelAll();
+  }
 });

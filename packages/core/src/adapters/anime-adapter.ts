@@ -49,6 +49,7 @@ export function getAnimeSync(): Record<string, any> {
  * Anime.js uses milliseconds and 0-100 progress; MorphJS uses seconds and 0-1.
  */
 export function wrapAnimeControls(animeAnimation: any): MorphControls {
+  let finished: Promise<void> | undefined;
   const controls: MorphControls = {
     play: () => animeAnimation.play(),
     pause: () => animeAnimation.pause(),
@@ -79,7 +80,7 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       return (animeAnimation.currentTime || 0) / 1000; // ms → seconds
     },
     get finished() {
-      return Promise.resolve(animeAnimation);
+      return finished ??= Promise.resolve(animeAnimation);
     },
     get playState() {
       if (animeAnimation.completed) return 'finished' as const;
@@ -90,7 +91,7 @@ export function wrapAnimeControls(animeAnimation: any): MorphControls {
       /* Anime.js commits styles inline by default */
     },
     then(onfulfilled, onrejected) {
-      return Promise.resolve(animeAnimation).then(onfulfilled, onrejected);
+      return controls.finished.then(onfulfilled, onrejected);
     },
   };
   return controls;
