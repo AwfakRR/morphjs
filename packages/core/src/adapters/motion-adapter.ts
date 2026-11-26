@@ -126,7 +126,7 @@ export function wrapMotionControls(
         track.cancel();
       }
       notifyControlsCanceled(controls);
-      onCancel?.();
+      if (tracks.length) onCancel?.();
     },
     finish: () => motionAnimation.finish(),
     reverse: () => play(true),

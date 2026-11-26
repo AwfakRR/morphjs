@@ -15,8 +15,11 @@ export function animate(tgts: MorphTargets, props: Record<string, any>, opt?: An
   const o: any = typeof opt === 'number' ? { duration: opt } : opt || {};
   const e = o.engine || o.adapter;
   const startMotion = () => createDeferred(loadMotion, (m) => {
-    const { onCancel, ...transition } = o;
-    return wrap(m.animate(tgts, props, transition), 'm', m.frame, onCancel);
+    // Preserve which options Motion sees when resolving default timing.
+    const transition = Object.prototype.propertyIsEnumerable.call(o, 'onCancel')
+      ? { ...o, onCancel: undefined }
+      : o;
+    return wrap(m.animate(tgts, props, transition), 'm', m.frame, o.onCancel);
   });
   if (e === 'gsap') return createDeferred(() => loadGsapFor(props), ({ gsap }) => wrap(gsap.to(tgts, toGsapOptions(props, o)), 'g'));
   if (e === 'motion') return startMotion();

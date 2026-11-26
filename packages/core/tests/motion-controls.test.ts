@@ -173,6 +173,22 @@ it.each([0.25, -0.15])('keeps the first keyframe when canceling after a complete
   expect(onCancel).toHaveBeenCalledOnce();
 });
 
+it('completes an instant tween without reporting cancellation when Motion has no tracks', async () => {
+  const target = { value: 0 };
+  animate(target as any, { value: 20 }, { engine: 'motion', duration: 0 });
+  await vi.advanceTimersByTimeAsync(64);
+  const onCancel = vi.fn();
+  const onComplete = vi.fn();
+  const controls = animate(target as any, { value: [20, 100] }, {
+    engine: 'motion', duration: 0, onCancel, onComplete,
+  });
+  controls.cancel();
+  await vi.advanceTimersByTimeAsync(64);
+  expect(target.value).toBe(100);
+  expect(onComplete).toHaveBeenCalledOnce();
+  expect(onCancel).not.toHaveBeenCalled();
+});
+
 it.each([true, false])('notifies a grouped cancel once (all rewound: %s)', async allRewound => {
   const target = { short: 0, long: 0 };
   const onCancel = vi.fn();

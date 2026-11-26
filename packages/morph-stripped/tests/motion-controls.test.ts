@@ -30,6 +30,17 @@ function makeTween() {
   return { target, controls };
 }
 
+it('preserves Motion timing when onCancel is the only option', async () => {
+  const target = { width: '20px' };
+  const controls = animate(target as any, { width: ['20px', '60px', '100px'] }, { onCancel: vi.fn() });
+  try {
+    await vi.advanceTimersByTimeAsync(64);
+    expect(controls.duration).toBeCloseTo(0.3);
+  } finally {
+    controls.cancel();
+  }
+});
+
 it('pauses native playback even when Motion retains its finished state after replay', () => {
   const pause = vi.fn();
   const track = { state: 'finished', animation: { state: 'finished' }, pause };
@@ -171,6 +182,22 @@ it.each([0.25, -0.15])('keeps the first keyframe when canceling after a complete
   expect(target.value).toBe(0);
   expect(onComplete).toHaveBeenCalledOnce();
   expect(onCancel).toHaveBeenCalledOnce();
+});
+
+it('completes an instant tween without reporting cancellation when Motion has no tracks', async () => {
+  const target = { value: 0 };
+  animate(target as any, { value: 20 }, { engine: 'motion', duration: 0 });
+  await vi.advanceTimersByTimeAsync(64);
+  const onCancel = vi.fn();
+  const onComplete = vi.fn();
+  const controls = animate(target as any, { value: [20, 100] }, {
+    engine: 'motion', duration: 0, onCancel, onComplete,
+  });
+  controls.cancel();
+  await vi.advanceTimersByTimeAsync(64);
+  expect(target.value).toBe(100);
+  expect(onComplete).toHaveBeenCalledOnce();
+  expect(onCancel).not.toHaveBeenCalled();
 });
 
 it.each([true, false])('notifies a grouped cancel once (all rewound: %s)', async allRewound => {

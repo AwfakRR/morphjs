@@ -129,7 +129,7 @@ export function wrap(
         }
         track.cancel?.();
       }
-      onCancel?.();
+      if (tracks.length) onCancel?.();
     },
     finish: () => isG ? anim.progress(1) : isA ? anim.seek?.(anim.duration) : anim.finish?.(),
     restart: () => {
