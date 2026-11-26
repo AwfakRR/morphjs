@@ -130,7 +130,7 @@ btnStagRandom?.addEventListener('click', () => {
 
 // --- Demo 5: Gesture ---
 gesture('#gesture-card', {
-  drag: true,
+  drag: { snapToOrigin: true },
   hover: true,
   press: true,
   onHoverStart: () => {
@@ -145,9 +145,10 @@ gesture('#gesture-card', {
   onPressEnd: () => {
     morph('#gesture-card', { scale: 1 }, 0.1);
   },
-  onDragEnd: (_, { offset: { x, y } }) => {
-    if (x || y) spring('#gesture-card', { translate: [`${x}px ${y}px`, '0px 0px'] }, { stiffness: 300, damping: 20 });
-  },
+});
+
+gesture('#gesture-puck', {
+  drag: { constraints: { left: -60, right: 60, top: 0, bottom: 0 }, momentum: true },
 });
 
 // --- Demo 6: Scroll ---

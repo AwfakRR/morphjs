@@ -192,10 +192,14 @@ function trackScroll(a: MorphControls | ((p: number) => void), o?: MorphScrollOp
 export const scroll = Object.assign(trackScroll, { inView });
 
 export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const c: any[] = [], els = typeof t === 'string' ? Array.from(document.querySelectorAll(t)) : Array.isArray(t) || t instanceof NodeList ? Array.from(t as any) : [t];
+  if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
+  const c: Array<() => void> = [];
+  const els = typeof t === 'string' ? Array.from(document.querySelectorAll(t)) : Array.isArray(t) ? t :
+    typeof NodeList !== 'undefined' && t instanceof NodeList ? Array.from(t) : [t];
+  let disposed = false;
   if (o?.hover || o?.press) {
     loadMotion().then((m: any) => {
+      if (disposed) return;
       if (o.hover && m.hover) {
         const hc = m.hover(t, (_: Element, event: PointerEvent) => {
           o.onHoverStart?.(event);
@@ -210,21 +214,177 @@ export function gesture(t: MorphTargets, o?: MorphGestureOptions): () => void {
         });
         if (typeof pc === 'function') c.push(pc);
       }
-    });
+    }).catch(() => {});
   }
   if (o?.drag) {
-    for (const el of els as any[]) {
-      if (!el.addEventListener) continue;
-      let a = false, ox = 0, oy = 0, px = 0, py = 0;
-      const cb = (y: string, e: any, dx=0, dy=0, tx=0, ty=0) => (o as any)[y]?.(e, { point: {x: e.clientX, y: e.clientY}, delta: {x: dx, y: dy}, offset: {x: tx, y: ty}, velocity: {x: dx, y: dy} });
-      const d = (e: any) => { a = true; ox=px=e.clientX; oy=py=e.clientY; el.setPointerCapture?.(e.pointerId); cb('onDragStart', e); };
-      const m = (e: any) => { if(!a)return; const dx=e.clientX-px, dy=e.clientY-py; px=e.clientX; py=e.clientY; const tx=e.clientX-ox, ty=e.clientY-oy; el.style.translate=`${tx}px ${ty}px`; cb('onDrag', e, dx, dy, tx, ty); };
-      const u = (e: any) => { if(!a)return; a = false; el.releasePointerCapture?.(e.pointerId); cb('onDragEnd', e, 0, 0, px-ox, py-oy); };
-      ['down','move','up','cancel'].forEach(e => el.addEventListener(`pointer${e}`, e==='down'?d:e==='move'?m:u));
-      c.push(() => ['down','move','up','cancel'].forEach(e => el.removeEventListener(`pointer${e}`, e==='down'?d:e==='move'?m:u)));
+    for (const el of els) {
+      if (typeof el === 'object' && el && 'style' in el && 'addEventListener' in el) {
+        c.push(bindDrag(el as HTMLElement | SVGElement, o));
+      }
     }
   }
-  return () => c.forEach(f => f());
+  return () => {
+    disposed = true;
+    c.splice(0).forEach(f => f());
+  };
+}
+
+type DragState = { base?: string[]; rendered?: string; x: number; y: number };
+const dragStates = new WeakMap<Element, DragState>();
+
+function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): () => void {
+  const { constraints, momentum, snapToOrigin } = typeof options.drag === 'object' ? options.drag : {};
+  const clamp = (value: number, min?: number, max?: number) =>
+    Math.min(max ?? Infinity, Math.max(min ?? -Infinity, value));
+  const state: DragState = dragStates.get(el) ?? { x: 0, y: 0 };
+  dragStates.set(el, state);
+  const x = { key: 'x' as const, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.left, max: constraints?.right };
+  const y = { key: 'y' as const, from: 0, start: 0, previous: 0, velocity: 0, min: constraints?.top, max: constraints?.bottom };
+  let pointerId: number | undefined;
+  let lastMove = 0;
+  let release = 0;
+  const animations: Array<{ stop(): void }> = [];
+
+  const render = () => {
+    const [left = '0px', top = '0px', z] = state.base ?? [];
+    el.style.translate = `${addTranslation(left, state.x)} ${addTranslation(top, state.y)}${z ? ` ${z}` : ''}`;
+    state.rendered = el.style.translate;
+  };
+  const stop = () => {
+    release++;
+    animations.splice(0).forEach(animation => animation.stop());
+  };
+  const info = (e: PointerEvent, dx = 0, dy = 0) => ({
+    point: { x: e.clientX, y: e.clientY },
+    delta: { x: dx, y: dy },
+    offset: { x: state.x, y: state.y },
+    velocity: { x: x.velocity, y: y.velocity },
+  });
+
+  const down = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId !== undefined) return;
+    stop();
+    const current = parseTranslation(typeof getComputedStyle === 'undefined' ? el.style.translate : getComputedStyle(el).translate);
+    if (state.rendered === undefined || !matchesTranslation(current, parseTranslation(state.rendered))) {
+      state.base = current;
+      state.rendered = undefined;
+      state.x = state.y = 0;
+    }
+    pointerId = e.pointerId;
+    for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
+      axis.from = state[axis.key];
+      axis.start = axis.previous = point;
+      axis.velocity = 0;
+    }
+    lastMove = e.timeStamp;
+    el.setPointerCapture?.(e.pointerId);
+    options.onDragStart?.(e, info(e));
+  };
+
+  const move = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId === undefined || pointerId !== e.pointerId) return;
+    const dx = e.clientX - x.previous, dy = e.clientY - y.previous;
+    const elapsed = e.timeStamp - lastMove;
+    for (const [axis, point, delta] of [[x, e.clientX, dx], [y, e.clientY, dy]] as const) {
+      axis.velocity = elapsed > 0 && elapsed <= 100 ? delta * 1000 / elapsed : 0;
+      axis.previous = point;
+      state[axis.key] = clamp(axis.from + point - axis.start, axis.min, axis.max);
+    }
+    lastMove = e.timeStamp;
+    render();
+    options.onDrag?.(e, info(e, dx, dy));
+  };
+
+  const up = (event: Event) => {
+    const e = event as PointerEvent;
+    if (pointerId === undefined || pointerId !== e.pointerId) return;
+    pointerId = undefined;
+    if (e.type !== 'lostpointercapture') el.releasePointerCapture?.(e.pointerId);
+    if (e.type !== 'pointerup' || e.timeStamp - lastMove > 100) x.velocity = y.velocity = 0;
+    const id = ++release;
+    options.onDragEnd?.(e, info(e));
+    if (id !== release || (!snapToOrigin && (!momentum || (!x.velocity && !y.velocity)))) return;
+
+    loadMotion().then(({ animate }: typeof import('motion')) => {
+      if (id !== release) return;
+      for (const axis of [x, y]) {
+        const position = state[axis.key];
+        const power = 0.8;
+        const destination = snapToOrigin ? 0 : clamp(position + power * axis.velocity, axis.min, axis.max);
+        if (destination === position) continue;
+        const onUpdate = (position: number) => {
+          if (id !== release) return;
+          state[axis.key] = snapToOrigin ? position : clamp(position, axis.min, axis.max);
+          render();
+        };
+        animations.push(snapToOrigin
+          ? animate(position, 0, { type: 'spring', stiffness: 300, damping: 30, onUpdate })
+          : animate(position, destination, {
+            type: 'inertia', velocity: axis.velocity, power, min: axis.min, max: axis.max,
+            modifyTarget: () => destination, onUpdate,
+          }));
+      }
+    }).catch(() => {
+      if (id !== release) return;
+      stop();
+      if (!snapToOrigin) return;
+      state.x = state.y = 0;
+      render();
+    });
+  };
+
+  el.addEventListener('pointerdown', down);
+  el.addEventListener('pointermove', move);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+  return () => {
+    stop();
+    el.removeEventListener('pointerdown', down);
+    el.removeEventListener('pointermove', move);
+    el.removeEventListener('pointerup', up);
+    el.removeEventListener('pointercancel', up);
+    el.removeEventListener('lostpointercapture', up);
+    if (pointerId !== undefined) {
+      el.releasePointerCapture?.(pointerId);
+      pointerId = undefined;
+    }
+  };
+}
+
+function matchesTranslation(current: string[], rendered: string[]): boolean {
+  const normalize = (axes: string[]) => [0, 1, 2].map(i => {
+    const axis = axes[i] ?? '0px';
+    return /^[+-]?(?:\d+|\d*\.\d+)(?:e[+-]?\d+)?px$/i.test(axis) ? Number(axis.slice(0, -2)) : axis;
+  });
+  const a = normalize(current), b = normalize(rendered);
+  if (a.every(axis => typeof axis === 'number') && b.every(axis => typeof axis === 'number')) {
+    return a.every((axis, i) => Math.abs(axis - b[i]) < 0.5);
+  }
+  return a.every((axis, i) => axis === b[i]);
+}
+
+function parseTranslation(value: string): string[] {
+  if (!value || value === 'none') return [];
+  const axes: string[] = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '(') depth++;
+    else if (value[i] === ')') depth--;
+    else if (value[i] === ' ' && !depth) {
+      axes.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  axes.push(value.slice(start));
+  return axes;
+}
+
+function addTranslation(base: string, offset: number): string {
+  if (!offset) return base;
+  return base.endsWith('px') ? `${Number(base.slice(0, -2)) + offset}px` : `calc(${base} + ${offset}px)`;
 }
 
 function pathTemplate(d: string): string {

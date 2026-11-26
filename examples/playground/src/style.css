@@ -153,6 +153,17 @@ h1 {
   cursor: grabbing;
 }
 
+.gesture-track {
+  width: 174px;
+  height: 64px;
+  align-self: center;
+}
+
+#gesture-puck {
+  cursor: grab;
+  touch-action: none;
+}
+
 /* Neon Colors */
 .neon-blue { background: var(--c-blue); box-shadow: 0 0 10px rgba(99, 102, 241, 0.5); }
 .neon-purple { background: var(--c-purple); box-shadow: 0 0 10px rgba(168, 85, 247, 0.5); }
