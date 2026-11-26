@@ -36,6 +36,10 @@ function isConnectedElement(el: Element): boolean {
   return el.isConnected !== false;
 }
 
+function readFlipId(el: Element): string | undefined {
+  return typeof el.getAttribute === 'function' ? el.getAttribute('data-flip-id') ?? undefined : undefined;
+}
+
 function isStyledElement(el: Element): el is HTMLElement | SVGElement {
   return 'style' in el && (el as HTMLElement).style != null;
 }
@@ -114,9 +118,7 @@ function capture(targets: MorphTargets): FlipState {
 
   for (const el of resolveTargets(targets)) {
     if (!isConnectedElement(el)) continue;
-    const flipId = typeof el.getAttribute === 'function'
-      ? el.getAttribute('data-flip-id') ?? undefined
-      : undefined;
+    const flipId = readFlipId(el);
     const snapshot: FlipSnapshot = {
       element: el,
       rect: readRect(el),
@@ -128,6 +130,84 @@ function capture(targets: MorphTargets): FlipState {
   }
 
   return { snapshots, byId };
+}
+
+type FlipMatch = { element: Element; snapshot: FlipSnapshot };
+type MeasuredEntry = FlipAnimationEntry & { savedTransform?: string };
+
+function matchFlipTargets(state: FlipState, targets?: MorphTargets): FlipMatch[] {
+  const matched: FlipMatch[] = [];
+  if (targets !== undefined) {
+    for (const el of resolveTargets(targets)) {
+      if (!isConnectedElement(el)) continue;
+      const flipId = readFlipId(el);
+      const snapshot = state.snapshots.get(el) ?? (flipId ? state.byId.get(flipId) : undefined);
+      if (snapshot) matched.push({ element: el, snapshot });
+    }
+  } else {
+    for (const [el, snapshot] of state.snapshots) {
+      if (isConnectedElement(el)) {
+        matched.push({ element: el, snapshot });
+      } else if (snapshot.flipId && typeof document.querySelector === 'function') {
+        const replacement = document.querySelector(
+          `[data-flip-id="${escapeAttrValue(snapshot.flipId)}"]`
+        );
+        if (replacement && isConnectedElement(replacement)) {
+          matched.push({ element: replacement, snapshot });
+        }
+      }
+    }
+  }
+  return matched;
+}
+
+function measureFlipEntry({ element, snapshot }: FlipMatch, scale: boolean, fade: boolean): MeasuredEntry | undefined {
+  const first = snapshot.rect;
+  const last = readRect(element);
+  if (last.width === 0 && last.height === 0) return undefined;
+
+  const canScale = scale && first.width > 0 && first.height > 0 && last.width > 0 && last.height > 0;
+  const rawScaleX = canScale ? first.width / last.width : 1;
+  const rawScaleY = canScale ? first.height / last.height : 1;
+  const hasScaleX = canScale && Math.abs(rawScaleX - 1) >= SCALE_EPSILON;
+  const hasScaleY = canScale && Math.abs(rawScaleY - 1) >= SCALE_EPSILON;
+  const scaleX = hasScaleX ? rawScaleX : 1;
+  const scaleY = hasScaleY ? rawScaleY : 1;
+
+  const [ox, oy] = hasScaleX || hasScaleY ? readTransformOrigin(element, last) : [0, 0];
+  const rawDx = first.left - last.left - ox * (1 - scaleX);
+  const rawDy = first.top - last.top - oy * (1 - scaleY);
+  const hasX = Math.abs(rawDx) >= POSITION_EPSILON;
+  const hasY = Math.abs(rawDy) >= POSITION_EPSILON;
+  const dx = hasX ? rawDx : 0;
+  const dy = hasY ? rawDy : 0;
+
+  const properties: Record<string, [number, number]> = {};
+  if (hasX) properties.x = [dx, 0];
+  if (hasY) properties.y = [dy, 0];
+  if (hasScaleX) properties.scaleX = [scaleX, 1];
+  if (hasScaleY) properties.scaleY = [scaleY, 1];
+
+  if (fade && snapshot.opacity !== undefined) {
+    const lastOpacity = readOpacity(element);
+    if (lastOpacity !== undefined && Math.abs(snapshot.opacity - lastOpacity) >= OPACITY_EPSILON) {
+      properties.opacity = [snapshot.opacity, lastOpacity];
+    }
+  }
+
+  if (Object.keys(properties).length === 0) return undefined;
+
+  return {
+    element,
+    first,
+    last,
+    dx,
+    dy,
+    scaleX,
+    scaleY,
+    properties,
+    savedTransform: isStyledElement(element) ? element.style.transform : undefined,
+  };
 }
 
 /**
@@ -150,86 +230,16 @@ function from(state: FlipState, options: FlipArg = {}): MorphControls {
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
-  const matched: Array<{ element: Element; snapshot: FlipSnapshot }> = [];
-  if (opts.targets !== undefined) {
-    for (const el of resolveTargets(opts.targets)) {
-      if (!isConnectedElement(el)) continue;
-      const flipId = typeof el.getAttribute === 'function'
-        ? el.getAttribute('data-flip-id') ?? undefined
-        : undefined;
-      const snapshot = state.snapshots.get(el) ?? (flipId ? state.byId.get(flipId) : undefined);
-      if (snapshot) matched.push({ element: el, snapshot });
-    }
-  } else {
-    for (const [el, snapshot] of state.snapshots) {
-      if (isConnectedElement(el)) {
-        matched.push({ element: el, snapshot });
-      } else if (snapshot.flipId && typeof document.querySelector === 'function') {
-        const replacement = document.querySelector(
-          `[data-flip-id="${escapeAttrValue(snapshot.flipId)}"]`
-        );
-        if (replacement && isConnectedElement(replacement)) {
-          matched.push({ element: replacement, snapshot });
-        }
-      }
-    }
-  }
-
+  const matched = matchFlipTargets(state, opts.targets);
   // Cancel any in-flight FLIP on matched elements before measuring their new layout rect.
   for (const { element } of matched) {
     activeFlips.get(element)?.cancel();
   }
 
-  type MeasuredEntry = FlipAnimationEntry & { savedTransform?: string };
   const entries: MeasuredEntry[] = [];
-
-  for (const { element, snapshot } of matched) {
-    const first = snapshot.rect;
-    const last = readRect(element);
-    if (last.width === 0 && last.height === 0) continue;
-
-    const canScale = scale && first.width > 0 && first.height > 0 && last.width > 0 && last.height > 0;
-    const rawScaleX = canScale ? first.width / last.width : 1;
-    const rawScaleY = canScale ? first.height / last.height : 1;
-    const hasScaleX = canScale && Math.abs(rawScaleX - 1) >= SCALE_EPSILON;
-    const hasScaleY = canScale && Math.abs(rawScaleY - 1) >= SCALE_EPSILON;
-    const scaleX = hasScaleX ? rawScaleX : 1;
-    const scaleY = hasScaleY ? rawScaleY : 1;
-
-    const [ox, oy] = hasScaleX || hasScaleY ? readTransformOrigin(element, last) : [0, 0];
-    const rawDx = first.left - last.left - ox * (1 - scaleX);
-    const rawDy = first.top - last.top - oy * (1 - scaleY);
-    const hasX = Math.abs(rawDx) >= POSITION_EPSILON;
-    const hasY = Math.abs(rawDy) >= POSITION_EPSILON;
-    const dx = hasX ? rawDx : 0;
-    const dy = hasY ? rawDy : 0;
-
-    const properties: Record<string, any> = {};
-    if (hasX) properties.x = [dx, 0];
-    if (hasY) properties.y = [dy, 0];
-    if (hasScaleX) properties.scaleX = [scaleX, 1];
-    if (hasScaleY) properties.scaleY = [scaleY, 1];
-
-    if (fade && snapshot.opacity !== undefined) {
-      const lastOpacity = readOpacity(element);
-      if (lastOpacity !== undefined && Math.abs(snapshot.opacity - lastOpacity) >= OPACITY_EPSILON) {
-        properties.opacity = [snapshot.opacity, lastOpacity];
-      }
-    }
-
-    if (Object.keys(properties).length === 0) continue;
-
-    entries.push({
-      element,
-      first,
-      last,
-      dx,
-      dy,
-      scaleX,
-      scaleY,
-      properties,
-      savedTransform: isStyledElement(element) ? element.style.transform : undefined,
-    });
+  for (const match of matched) {
+    const entry = measureFlipEntry(match, scale, fade);
+    if (entry) entries.push(entry);
   }
 
   if (entries.length === 0) {
