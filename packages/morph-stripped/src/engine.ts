@@ -82,12 +82,33 @@ export function createDeferred(ld: () => Promise<any>, exec: (mod: any) => any):
   };
 }
 
+function cubicBezier([x1, y1, x2, y2]: number[]): (progress: number) => number {
+  const sample = (t: number, a: number, b: number) =>
+    ((1 + 3 * (a - b)) * t + 3 * (b - 2 * a)) * t * t + 3 * a * t;
+
+  return progress => {
+    if (progress === 0 || progress === 1) return progress;
+    let min = 0;
+    let max = 1;
+    for (let i = 0; i < 24; i++) {
+      const t = (min + max) / 2;
+      const x = sample(t, x1, x2);
+      if (x === progress) return sample(t, y1, y2);
+      if (x < progress) min = t;
+      else max = t;
+    }
+    return sample((min + max) / 2, y1, y2);
+  };
+}
+
 export function toAnimeOptions(props: Record<string, any>, opt?: any): Record<string, any> {
   const r = { ...props };
+  const ease = opt?.ease || r.ease;
+  if (Array.isArray(ease)) r.ease = cubicBezier(ease);
+  else if (opt?.ease) r.ease = opt.ease;
   if (!opt) return r;
   if (opt.duration !== undefined) r.duration = opt.duration * 1000;
   if (opt.delay !== undefined) r.delay = opt.delay * 1000;
-  if (opt.ease) r.ease = Array.isArray(opt.ease) ? `cubicBezier(${opt.ease.join(',')})` : opt.ease;
   if (opt.repeat !== undefined) r.loop = opt.repeat;
   if (opt.direction) r.direction = opt.direction;
   if (opt.autoplay !== undefined) r.autoplay = opt.autoplay;
@@ -115,10 +136,12 @@ const gmap: Record<string, string> = {
 
 export function toGsapOptions(props: Record<string, any>, opt?: any): Record<string, any> {
   const r = { ...props };
+  const ease = opt?.ease || r.ease;
+  if (Array.isArray(ease)) r.ease = cubicBezier(ease);
+  else if (opt?.ease) r.ease = gmap[opt.ease] || opt.ease;
   if (!opt) return r;
   if (opt.duration !== undefined) r.duration = opt.duration;
   if (opt.delay !== undefined) r.delay = opt.delay;
-  if (opt.ease) r.ease = gmap[opt.ease as string] || opt.ease;
   if (opt.repeat !== undefined) r.repeat = opt.repeat === Infinity ? -1 : opt.repeat;
   if (opt.direction === 'alternate' || opt.direction === 'alternate-reverse') r.yoyo = true;
   if (opt.autoplay === false) r.paused = true;

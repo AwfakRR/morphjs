@@ -1,4 +1,5 @@
 import type {
+  CubicBezier,
   IAnimationAdapter,
   MorphAnimationOptions,
   MorphControls,
@@ -113,6 +114,7 @@ export function wrapGsapControls(tween: any): MorphControls {
  */
 function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOptions): Record<string, any> {
   const vars: Record<string, any> = { ...properties };
+  const ease = options?.ease ?? (Array.isArray(properties.ease) ? properties.ease as CubicBezier : undefined);
 
   if (options?.duration !== undefined) vars.duration = options.duration;
   const delay = options?.delay;
@@ -121,7 +123,7 @@ function toGsapVars(properties: Record<string, any>, options?: MorphAnimationOpt
   } else if (delay !== undefined) {
     vars.delay = delay;
   }
-  if (options?.ease !== undefined) vars.ease = toGsapEasing(options.ease);
+  if (ease !== undefined) vars.ease = toGsapEasing(ease);
   if (options?.repeat !== undefined) vars.repeat = options.repeat === Infinity ? -1 : options.repeat;
   if (options?.direction === 'alternate' || options?.direction === 'alternate-reverse') vars.yoyo = true;
   if (options?.direction === 'reverse' || options?.direction === 'alternate-reverse') {
