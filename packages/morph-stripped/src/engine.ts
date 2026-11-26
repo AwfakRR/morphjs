@@ -108,10 +108,15 @@ export function toAnimeOptions(props: Record<string, any>, opt?: any, usePropert
   else if (typeof ease === 'string' && /^ease[A-Z]/.test(ease)) r.ease = ease[4].toLowerCase() + ease.slice(5);
   else if (opt?.ease) r.ease = opt.ease;
   const duration = opt?.duration ?? (usePropertyTiming ? props.duration : undefined);
-  const delay = opt?.delay ?? (usePropertyTiming ? props.delay : undefined);
+  const timingDelay = opt?.delay ?? (usePropertyTiming ? props.delay : undefined);
   if (typeof duration === 'number') r.duration = duration * 1000;
-  if (typeof delay === 'number') r.delay = delay * 1000;
+  if (typeof timingDelay === 'number') r.delay = timingDelay * 1000;
   if (!opt) return r;
+  const delay = opt.delay;
+  if (typeof delay === 'function') {
+    r.delay = (_target: unknown, index: number, targets: unknown[] | number) =>
+      delay(index, typeof targets === 'number' ? targets : targets.length) * 1000;
+  }
   if (opt.repeat !== undefined) r.loop = opt.repeat;
   if (opt.direction) r.direction = opt.direction;
   if (opt.autoplay !== undefined) r.autoplay = opt.autoplay;
@@ -144,7 +149,10 @@ export function toGsapOptions(props: Record<string, any>, opt?: any): Record<str
   else if (ease) r.ease = gmap[ease] || ease;
   if (!opt) return r;
   if (opt.duration !== undefined) r.duration = opt.duration;
-  if (opt.delay !== undefined) r.delay = opt.delay;
+  const delay = opt.delay;
+  if (typeof delay === 'function') {
+    r.delay = (index: number, _target: unknown, targets: unknown[]) => delay(index, targets.length);
+  } else if (delay !== undefined) r.delay = delay;
   if (opt.repeat !== undefined) r.repeat = opt.repeat === Infinity ? -1 : opt.repeat;
   if (opt.direction === 'alternate' || opt.direction === 'alternate-reverse') r.yoyo = true;
   if (opt.autoplay === false) r.paused = true;
