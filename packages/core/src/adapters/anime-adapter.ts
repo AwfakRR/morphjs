@@ -1,4 +1,5 @@
 import type {
+  CubicBezier,
   IAnimationAdapter,
   MorphAnimationOptions,
   MorphControls,
@@ -96,6 +97,7 @@ function toAnimeOptions(
   options?: MorphAnimationOptions
 ): Record<string, any> {
   const result: Record<string, any> = { ...properties };
+  const ease = options?.ease ?? (Array.isArray(properties.ease) ? properties.ease as CubicBezier : undefined);
 
   if (options?.duration !== undefined) result.duration = options.duration * 1000;
   const delay = options?.delay;
@@ -105,7 +107,7 @@ function toAnimeOptions(
   } else if (delay !== undefined) {
     result.delay = delay * 1000;
   }
-  if (options?.ease !== undefined) result.ease = toAnimeEasing(options.ease);
+  if (ease !== undefined) result.ease = toAnimeEasing(ease);
   if (options?.repeat !== undefined) result.loop = options.repeat;
   if (options?.direction !== undefined) result.direction = options.direction;
   if (options?.autoplay !== undefined) result.autoplay = options.autoplay;

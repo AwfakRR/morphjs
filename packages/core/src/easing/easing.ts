@@ -1,5 +1,23 @@
-// ponytail: both motion and animejs evaluate easing curves natively. No duplicate math needed.
-import type { EasingFunction, EasingValue } from '../types';
+import type { CubicBezier, EasingFunction, EasingValue } from '../types';
+
+function cubicBezier([x1, y1, x2, y2]: CubicBezier): EasingFunction {
+  const sample = (t: number, a: number, b: number) =>
+    ((1 + 3 * (a - b)) * t + 3 * (b - 2 * a)) * t * t + 3 * a * t;
+
+  return progress => {
+    if (progress === 0 || progress === 1) return progress;
+    let min = 0;
+    let max = 1;
+    for (let i = 0; i < 24; i++) {
+      const t = (min + max) / 2;
+      const x = sample(t, x1, x2);
+      if (x === progress) return sample(t, y1, y2);
+      if (x < progress) min = t;
+      else max = t;
+    }
+    return sample((min + max) / 2, y1, y2);
+  };
+}
 
 export const customEasings = new Map<string, EasingFunction>();
 
@@ -26,7 +44,7 @@ export function toAnimeEasing(input?: EasingValue): any {
   if (!input) return undefined;
   if (typeof input === 'function') return input;
   if (typeof input === 'string' && customEasings.has(input)) return customEasings.get(input);
-  if (Array.isArray(input)) return `cubicBezier(${input.join(',')})`;
+  if (Array.isArray(input)) return cubicBezier(input);
   if (typeof input === 'string' && /^ease[A-Z]/.test(input)) return input[4].toLowerCase() + input.slice(5);
   return input; // pass through Anime-native strings like 'out(3)' or 'inOutQuad'
 }
@@ -61,6 +79,7 @@ const gsapEasingMap: Record<string, string> = {
 export function toGsapEasing(input?: EasingValue): any {
   if (!input) return undefined;
   if (typeof input === 'function') return input;
+  if (Array.isArray(input)) return cubicBezier(input);
   if (typeof input === 'string' && customEasings.has(input)) return customEasings.get(input);
   if (typeof input === 'string' && gsapEasingMap[input]) return gsapEasingMap[input];
   return input; // pass through GSAP-native strings like 'power2.out'

@@ -59,7 +59,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (opt?.defaults?.ease !== undefined) d.ease = opt.defaults.ease;
     const tl = gsap.timeline({
       paused: opt?.autoplay === false,
-      defaults: Object.keys(d).length ? d : undefined,
+      defaults: Object.keys(d).length ? toGsapOptions(d) : undefined,
     });
     seq.forEach(s => tl.to(s.t, toGsapOptions(s.p), s.o));
     realTl = tl;
