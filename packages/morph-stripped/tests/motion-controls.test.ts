@@ -149,6 +149,27 @@ it('preserves the unelapsed part of the initial Motion delay when paused', async
   }
 });
 
+it('keeps the first keyframe when canceling after a completed rewind', async () => {
+  const target = { value: 0 };
+  const onComplete = vi.fn();
+  const controls = animate(target as any, { value: [0, 100] }, {
+    engine: 'motion', duration: 1, delay: 0.25, ease: 'linear', onComplete,
+  });
+  await vi.advanceTimersByTimeAsync(800);
+  expect(target.value).toBeGreaterThan(45);
+
+  controls.reverse();
+  await vi.advanceTimersByTimeAsync(640);
+  expect(target.value).toBe(0);
+  expect(controls.playState).toBe('finished');
+  expect(onComplete).toHaveBeenCalledOnce();
+
+  controls.cancel();
+  await vi.advanceTimersByTimeAsync(64);
+  expect(target.value).toBe(0);
+  expect(onComplete).toHaveBeenCalledOnce();
+});
+
 it('reverses each track from its own position after another track finishes', async () => {
   const target = { short: 0, long: 0 };
   const options = {
