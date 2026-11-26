@@ -1,4 +1,5 @@
 import { expect, it, vi } from 'vitest';
+import { engine as animeEngine } from 'animejs';
 import { timeline } from '../src/index';
 
 it.each(['pause', 'cancel'] as const)('keeps top-level Anime composition after %s()', async (action) => {
@@ -287,15 +288,18 @@ it.each([['anime', false], ['anime', true], ['gsap', false], ['gsap', true]] as 
   }
 });
 
-it.each([true, false])('hands off a shared property from an Anime parent tween to its child (prebuilt: %s)', async (prebuilt) => {
+it.each(['child first', 'same turn', 'parent first'])('hands off a shared property from an Anime parent tween to its child (%s)', async (order) => {
   const target = { x: 10 };
+  const prebuiltParent = order === 'parent first' ? timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' }) : undefined;
+  if (prebuiltParent) await vi.waitFor(() => expect(prebuiltParent.duration).toBeCloseTo(1));
   const child = timeline({ autoplay: false })
     .add(target, { x: [100, 200], duration: 1, ease: 'linear' })
     .add(target, { x: 300, duration: 1, ease: 'linear' });
-  if (prebuilt) await vi.waitFor(() => expect(child.duration).toBeCloseTo(2));
-  const parent = timeline({ autoplay: false })
-    .add(target, { x: [0, 100], duration: 1, ease: 'linear' })
-    .add(child);
+  if (order === 'child first') await vi.waitFor(() => expect(child.duration).toBeCloseTo(2));
+  const parent = prebuiltParent ?? timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  parent.add(child);
 
   try {
     parent.seek(0.5);
@@ -312,10 +316,84 @@ it.each([true, false])('hands off a shared property from an Anime parent tween t
   }
 });
 
-it('preserves the original start of a destination-only Anime child after it has rendered', async () => {
+it('keeps Anime keyframe order when seeking an attached child', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100, 200], duration: 2, ease: 'linear' });
+  const parent = timeline({ autoplay: false }).add(child);
+
+  try {
+    parent.seek(0.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
+    expect(target.x).toBeCloseTo(50);
+    parent.seek(1.5);
+    expect(target.x).toBeCloseTo(150);
+    parent.seek(0.25);
+    expect(target.x).toBeCloseTo(25);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('keeps the later Anime segment in control when seeking backward through overlap', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 2, ease: 'linear' })
+    .add(target, { x: [50, 150], duration: 1, ease: 'linear' }, 0.5);
+  const parent = timeline({ autoplay: false }).add(child);
+
+  try {
+    parent.seek(1.2);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.2));
+    expect(target.x).toBeCloseTo(120);
+    parent.seek(0.8);
+    expect(target.x).toBeCloseTo(80);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('chains a destination-only tween added after seeking, before attaching its Anime timeline', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  await vi.waitFor(() => expect(child.duration).toBeCloseTo(1));
+  child.seek(0.5);
+  expect(target.x).toBeCloseTo(50);
+  child.add(target, { x: 200, duration: 1, ease: 'linear' });
+  const parent = timeline({ autoplay: false }).add(child);
+
+  try {
+    parent.seek(1.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.5));
+    expect(target.x).toBeCloseTo(150);
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('renders an attached Anime blend tween as an absolute value', async () => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear', composition: 'blend' });
+  const parent = timeline({ autoplay: false }).add(child);
+
+  try {
+    parent.seek(0.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
+    await vi.waitFor(() => {
+      animeEngine.update();
+      expect(target.x).toBeCloseTo(50);
+    }, { timeout: 250 });
+  } finally {
+    parent.cancel();
+  }
+});
+
+it.each([{ x: 110 }, { x: [{ to: 110 }] }])('preserves a prebuilt Anime child’s destination-only start (%j)', async (props) => {
   const target = { x: 10 };
   const child = timeline({ autoplay: false })
-    .add(target, { x: 110, duration: 1, ease: 'linear' });
+    .add(target, { ...props, duration: 1, ease: 'linear' });
   await vi.waitFor(() => expect(child.duration).toBeCloseTo(1));
   child.seek(0.75);
   expect(target.x).toBeCloseTo(85);
