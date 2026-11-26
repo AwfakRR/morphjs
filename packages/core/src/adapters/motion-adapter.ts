@@ -113,7 +113,10 @@ export function wrapMotionControls(motionAnimation: any, finished?: PromiseLike<
         const driver = driverOf(track);
         if (track.speed < 0 && isJs(driver)) {
           // Rewound tracks are already settled. Cancel would sample a different keyframe.
-          if (driver.state === 'finished') continue;
+          if (driver.state === 'finished') {
+            driver.options?.onCancel?.();
+            continue;
+          }
           track.speed *= -1;
         }
         track.cancel();
