@@ -1,6 +1,7 @@
 import 'animejs';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { adapterRegistry, configure, svg } from '../src/index';
+import { animeAdapter } from '../src/adapters/anime-adapter';
 import { ensureMotion } from '../src/adapters/motion-adapter';
 import { createNoopControls } from '../src/utils/controls';
 
@@ -25,6 +26,7 @@ afterEach(() => {
   configure({ reducedMotion: 'user' });
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 it('passes numeric endpoints to third-party adapters and completes once', async () => {
@@ -128,6 +130,51 @@ it('pauses and plays both Motion strokes with one controls object', async () => 
   expect(offsets()).toEqual(midpoints);
   controls.play();
   await vi.advanceTimersByTimeAsync(400);
+  await controls.finished;
+  expect(offsets()).toEqual([0, 0]);
+});
+
+it.each(['play', 'resume', 'cancel'] as const)('handles %s after the first Motion stroke finishes', async action => {
+  const { targets, offsets } = await motionPaths();
+  const onComplete = vi.fn(offsets);
+  const controls = svg.draw(targets, {
+    engine: 'motion', duration: 0.18, ease: 'linear', delay: index => index * 0.14, onComplete,
+  });
+
+  await vi.advanceTimersByTimeAsync(224);
+  expect(offsets()[0]).toBe(0);
+  expect(offsets()[1]).toBeGreaterThan(0);
+  if (action === 'cancel') {
+    controls.cancel();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(offsets()).toEqual([100, 240]);
+    expect(onComplete).not.toHaveBeenCalled();
+    return;
+  }
+
+  if (action === 'resume') controls.pause();
+  controls.play();
+  await vi.advanceTimersByTimeAsync(48);
+  expect(offsets()[0]).toBe(0);
+  expect(onComplete).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(onComplete).toHaveBeenCalledOnce();
+  expect(onComplete).toHaveReturnedWith([0, 0]);
+});
+
+it('uses each path length in the Motion fallback when Anime is unavailable', async () => {
+  const { targets, offsets } = await motionPaths();
+  const unavailable = () => { throw new Error('Anime unavailable'); };
+  vi.spyOn(animeAdapter, 'svg').mockImplementation(unavailable);
+  vi.spyOn(animeAdapter, 'ensure').mockRejectedValue(new Error('Anime unavailable'));
+
+  const controls = svg.draw(targets, { duration: 0.2, ease: 'linear' });
+  await vi.advanceTimersByTimeAsync(112);
+  const [short, long] = offsets();
+  expect(short).toBeGreaterThan(0);
+  expect(short).toBeLessThan(100);
+  expect(long / 240).toBeCloseTo(short / 100);
+  await vi.advanceTimersByTimeAsync(200);
   await controls.finished;
   expect(offsets()).toEqual([0, 0]);
 });

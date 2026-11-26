@@ -5,6 +5,7 @@ import { resolveTargets } from '../utils/targets';
 import { createNoopControls, groupControls } from '../utils/controls';
 import { animeAdapter } from '../adapters/anime-adapter';
 import { gsapAdapter } from '../adapters/gsap-adapter';
+import { motionAdapter } from '../adapters/motion-adapter';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 import { createDeferredControls } from '../utils/deferred-controls';
@@ -103,12 +104,12 @@ function runAnimation(
       notify?.();
     });
     const startOnce = once(onStart), cancelOnce = once(onCancel);
-    const controls = groupControls(elements.map((element, index) => start([element], targetProperties(index), {
+    const controls = elements.map((element, index) => start([element], targetProperties(index), {
       ...shared, delay: typeof delay === 'function' ? delay(index, elements.length) : delay,
       onStart: startOnce, onCancel: cancelOnce,
-    })));
-    if (onComplete) void controls.finished.then(onComplete, () => {});
-    return controls;
+    }));
+    // Motion keeps a finished tween at its end value unless it is paused before cancellation.
+    return groupControls(controls, onComplete, backend === motionAdapter ? control => control.pause() : undefined);
   };
 
   const pendingDelay = prepareStagger(opts.delay, animTargets);

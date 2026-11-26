@@ -43,26 +43,60 @@ export function createNoopControls(): MorphControls {
   };
 }
 
-export function groupControls(controls: MorphControls[]): MorphControls {
+export function groupControls(
+  controls: MorphControls[],
+  onComplete?: () => void,
+  resetFinished?: (control: MorphControls) => void,
+): MorphControls {
   const first = controls[0];
-  const finished = () => Promise.all(controls.map(control => control.finished)).then(() => {});
+  let cancelled = false;
+  const observe = () => {
+    const pending = new Set(controls);
+    const finished = Promise.all(controls.map(control => control.finished.then(() => {
+      pending.delete(control);
+    }))).then(() => {});
+    void finished.then(() => {
+      if (!cancelled && run.pending === pending) onComplete?.();
+    }).catch(() => {});
+    return { pending, finished };
+  };
+  let run = observe();
+  const reset = () => {
+    cancelled = false;
+    run = observe();
+  };
   return {
-    play: () => controls.forEach(control => control.play()),
-    pause: () => controls.forEach(control => control.pause()),
+    play: () => {
+      if (!cancelled && run.pending.size) run.pending.forEach(control => control.play());
+      else {
+        controls.forEach(control => control.play());
+        reset();
+      }
+    },
+    pause: () => run.pending.forEach(control => control.pause()),
     reverse: () => controls.forEach(control => control.reverse()),
-    cancel: () => controls.forEach(control => control.cancel()),
+    cancel: () => {
+      cancelled = true;
+      controls.forEach(control => {
+        if (!run.pending.has(control)) resetFinished?.(control);
+        control.cancel();
+      });
+    },
     finish: () => controls.forEach(control => control.finish()),
-    restart: () => controls.forEach(control => control.restart()),
+    restart: () => {
+      controls.forEach(control => control.restart());
+      reset();
+    },
     seek: time => controls.forEach(control => control.seek?.(time)),
     commitStyles: () => controls.forEach(control => control.commitStyles()),
-    get progress() { return first.progress; },
+    get progress() { return Math.min(...controls.map(control => control.progress)); },
     get currentTime() { return first.currentTime; },
     get playState() {
       return controls.find(control => control.playState === 'running')?.playState
         ?? controls.find(control => control.playState === 'paused')?.playState
         ?? first.playState;
     },
-    get finished() { return finished(); },
-    then: (onFulfilled, onRejected) => finished().then(onFulfilled, onRejected),
+    get finished() { return run.finished; },
+    then: (onFulfilled, onRejected) => run.finished.then(onFulfilled, onRejected),
   };
 }
