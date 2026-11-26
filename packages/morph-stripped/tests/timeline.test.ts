@@ -1,6 +1,27 @@
 import { expect, it, vi } from 'vitest';
 import { timeline } from '../src/index';
 
+it.each(['tween', 'child'] as const)('keeps an autoplaying Anime timeline running after adding a %s', async (kind) => {
+  const tl = timeline().add({ x: 0 } as any, { x: 100, duration: 5 });
+
+  try {
+    await vi.waitFor(() => expect(tl.currentTime).toBeGreaterThan(0.1));
+    const time = tl.currentTime;
+    const target = { y: 0 };
+    if (kind === 'child') {
+      tl.add(timeline({ autoplay: false }).add(target as any, { y: 1, duration: 1 }));
+    } else {
+      tl.add(target as any, { y: 1, duration: 1 });
+    }
+    await vi.waitFor(() => expect(tl.duration).toBeCloseTo(6));
+    expect(tl.currentTime).toBeGreaterThanOrEqual(time);
+    expect(tl.playState).toBe('running');
+    await vi.waitFor(() => expect(tl.currentTime).toBeGreaterThan(time + 0.05));
+  } finally {
+    tl.cancel();
+  }
+});
+
 it('positions Anime timeline segments in seconds before and after initialization', async () => {
   const tl = timeline({ autoplay: false })
     .add({ x: 0 }, { x: 1 }, 0)

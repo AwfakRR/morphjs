@@ -72,6 +72,14 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (!realTl) seq.push(run);
     else run();
   };
+  const addAnime = (run: () => void) => {
+    const { paused, currentTime, reversed } = realTl;
+    run();
+    if (!paused) {
+      if (realTl.reversed !== reversed) realTl.alternate();
+      realTl.seek(currentTime, true).resume();
+    }
+  };
   const loadEngine = () => activeEngine === 'g' ? loadGsapCore() : loadAnime();
   const ready = loadEngine().catch(() => {
     activeEngine = activeEngine === 'g' ? 'a' : 'g';
@@ -138,7 +146,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             realTl.add(tl, p);
             tl.paused(false);
           } else if (activeEngine === 'a' && engine === 'a') {
-            realTl.sync(tl, toAnimePosition(p));
+            addAnime(() => { realTl.sync(tl, toAnimePosition(p)); });
           } else {
             const controls = t as MorphTimeline;
             controls.pause();
@@ -149,7 +157,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             if (activeEngine === 'g') {
               realTl.fromTo(clock, { time: 0 }, { time: controls.duration, duration: controls.duration, ease: 'none', immediateRender: false }, p);
             } else {
-              realTl.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, toAnimePosition(p));
+              addAnime(() => { realTl.add(clock, { time: [0, controls.duration], duration: controls.duration * 1000, delay: 0, ease: 'linear' }, toAnimePosition(p)); });
             }
           }
         }, child.ready()));
@@ -159,7 +167,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
             enqueue(() => { realTl.to(t, toGsapOptions(p), o); },
               (p.scrollTrigger !== undefined || p.morphSVG !== undefined || p.drawSVG !== undefined) && loadGsapFor(p));
           } else {
-            enqueue(() => { realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); });
+            enqueue(() => addAnime(() => { realTl.add(t, toAnimeOptions(p, undefined, true), toAnimePosition(o)); }));
           }
         });
       }
