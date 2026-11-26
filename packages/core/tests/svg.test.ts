@@ -41,7 +41,7 @@ describe('core SVG helpers', () => {
     const d: [string, string] = ['M0 0 L10 0', 'M0 0 L10 10'];
     svg.morph('.path', { d, adapter: 'gsap', duration: 2 });
 
-    expect(gsap.to).toHaveBeenCalledWith([path], {
+    expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: d[0] } }, {
       morphSVG: { shape: d[1] },
       duration: 2,
     });
@@ -50,6 +50,7 @@ describe('core SVG helpers', () => {
   it.each([
     ['normal', '0%', '100%'],
     ['reverse', '100%', '0%'],
+    ['alternate-reverse', '100%', '0%'],
   ] as const)('routes %s draw through DrawSVGPlugin', async (direction, from, to) => {
     await gsapAdapter.ensure!();
     svg.draw(path, { engine: 'gsap', direction, duration: 2 });
@@ -57,6 +58,7 @@ describe('core SVG helpers', () => {
     expect(gsap.fromTo).toHaveBeenCalledWith([path], { drawSVG: from }, {
       drawSVG: to,
       duration: 2,
+      ...(direction === 'alternate-reverse' ? { yoyo: true } : {}),
     });
   });
 
@@ -74,6 +76,25 @@ describe('core SVG helpers', () => {
       expect(event.controls).toBe(controls);
       expect(event.target).toBe(path);
     }
+  });
+
+  it('passes attribute pairs to GSAP as start and end values', async () => {
+    await gsapAdapter.ensure!();
+    svg.attr(path, { r: [10, 50], fill: '#ff0000' }, { adapter: 'gsap' });
+
+    expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { r: 10 } }, {
+      attr: { r: 50, fill: '#ff0000' },
+    });
+  });
+
+  it('keeps sibling SVG attributes when GSAP morphs the path', async () => {
+    await gsapAdapter.ensure!();
+    svg.attr(path, { d: ['M0 0 L10 0', 'M0 0 L10 10'], fill: '#ff0000' }, { adapter: 'gsap' });
+
+    expect(gsap.fromTo).toHaveBeenCalledWith([path], { attr: { d: 'M0 0 L10 0' } }, {
+      morphSVG: { shape: 'M0 0 L10 10' },
+      attr: { fill: '#ff0000' },
+    });
   });
 
   it('draws with Anime by default and keeps the same route after lazy loading', async () => {

@@ -46,7 +46,7 @@ export const svg = {
     const elements = resolveTargets(targets);
     if (elements.length === 0) return createNoopControls();
 
-    const isReverse = options?.direction === 'reverse';
+    const isReverse = options?.direction === 'reverse' || options?.direction === 'alternate-reverse';
 
     const [len] = elements.map(el => {
       if (typeof SVGGeometryElement === 'undefined' || !(el instanceof SVGGeometryElement)) return 500;
