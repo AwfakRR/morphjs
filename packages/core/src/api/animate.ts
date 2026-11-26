@@ -1,6 +1,6 @@
 // ponytail: shortest API (numeric duration, boolean spring) and compact queue runner
 import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls } from '../types';
-import { resolveAdapter, shouldReduceMotion } from '../router';
+import { getConfig, resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
 import { createNoopControls } from '../utils/controls';
 import { stateManager } from '../state';
@@ -69,6 +69,9 @@ export function animate(
   }
 
   let opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
+  const { defaultDuration, defaultEase } = getConfig();
+  opts.duration ??= defaultDuration;
+  opts.ease ??= defaultEase;
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
