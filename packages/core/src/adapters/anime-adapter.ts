@@ -162,6 +162,8 @@ export const animeAdapter: IAnimationAdapter = {
     }
 
     const pauses: Array<{ position: number; callback?: () => void }> = [];
+    // Compare checkpoints at the same precision as Anime's playhead getters.
+    const roundPosition = (position: number): number => anime.utils.round(position, anime.engine.precision);
     let previousPosition = 0;
     let startPending = true;
     const tl = anime.createTimeline({
@@ -169,20 +171,24 @@ export const animeAdapter: IAnimationAdapter = {
       defaults,
       onBeforeUpdate() {
         if (pauses.length === 0 || tl.paused) return;
-        // The rounded time getters can stop short of a fractional end marker.
         const atEnd = tl.progress === 1;
-        const position = atEnd ? (tl.reversed ? 0 : tl.iterationDuration) : tl.iterationCurrentTime;
+        const framePosition = atEnd ? (tl.reversed ? 0 : tl.iterationDuration) : tl.iterationCurrentTime;
+        const position = roundPosition(framePosition);
         if (position === previousPosition) return;
 
         const forward = position > previousPosition;
         let marker: (typeof pauses)[number] | undefined;
+        let checkpoint = position;
         for (const pause of pauses) {
-          const at = pause.position;
+          const at = roundPosition(pause.position);
           const atStart = startPending && previousPosition === 0 && at === 0;
           const crossed = forward
             ? (previousPosition < at || atStart) && at <= position
             : position <= at && at < previousPosition;
-          if (crossed && (!marker || (forward ? at < marker.position : at > marker.position))) marker = pause;
+          if (crossed && (!marker || (forward ? at < checkpoint : at > checkpoint))) {
+            marker = pause;
+            checkpoint = at;
+          }
         }
         startPending = false;
         if (!marker) {
@@ -191,11 +197,12 @@ export const animeAdapter: IAnimationAdapter = {
         }
 
         // Rewind the unrendered tick, then render to the marker with tween callbacks enabled.
-        const callbacks = pauses.filter((pause) => pause.position === marker.position);
+        const callbacks = pauses.filter((pause) => roundPosition(pause.position) === checkpoint);
         const time = atEnd ? tl.duration : tl.currentTime;
-        tl.pause().seek(time - Math.abs(position - previousPosition), true);
-        previousPosition = marker.position;
-        tl.seek(time - Math.abs(position - marker.position));
+        const direction = forward ? 1 : -1;
+        tl.pause().seek(time + direction * (previousPosition - framePosition), true);
+        previousPosition = checkpoint;
+        tl.seek(time + direction * (marker.position - framePosition));
         for (const { callback } of callbacks) {
           if (callback) queueMicrotask(callback);
         }
@@ -212,7 +219,7 @@ export const animeAdapter: IAnimationAdapter = {
     const syncPlayhead = <Args extends unknown[]>(action: (...args: Args) => void, resetStart = false) =>
       (...args: Args) => {
         action(...args);
-        previousPosition = tl.iterationCurrentTime;
+        previousPosition = roundPosition(tl.iterationCurrentTime);
         if (resetStart) startPending = previousPosition === 0;
       };
 
@@ -240,7 +247,7 @@ export const animeAdapter: IAnimationAdapter = {
       add(addTargets, addProps, offset?) {
         const addOpts = toAnimeOptions(addProps);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
-        previousPosition = tl.iterationCurrentTime;
+        previousPosition = roundPosition(tl.iterationCurrentTime);
         return this;
       },
       label(name, offset?) {
@@ -260,7 +267,7 @@ export const animeAdapter: IAnimationAdapter = {
         const wasPaused = tl.paused;
         // Anime reinitializes the playhead when adding a child.
         tl.pause().add({ duration: 0, delay: 0 }, position).pause().seek(time, true);
-        previousPosition = tl.iterationCurrentTime;
+        previousPosition = roundPosition(tl.iterationCurrentTime);
         if (!wasPaused) tl.resume();
         return this;
       },

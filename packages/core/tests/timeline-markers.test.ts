@@ -231,6 +231,27 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
       tl.cancel();
     }
   });
+
+  it('does not stop at the same fractional pause again on resume', async () => {
+    const onPause = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 1 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+      .addPause(0.1 + 0.2, onPause);
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(tl.playState).toBe('paused');
+
+      tl.play();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(tl.playState).toBe('finished');
+    } finally {
+      tl.cancel();
+    }
+  });
 });
 
 it('stops at an Anime pause at zero without stopping there again on resume', async () => {
