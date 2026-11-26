@@ -577,3 +577,21 @@ it('does not count the Anime host loop default on nested completion timers', asy
     parent.cancel();
   }
 });
+
+it('completes a percentage-positioned Anime child with a fractional duration', async () => {
+  const child = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: [0, 100], duration: 0.3333333, ease: 'linear' });
+  const finished = vi.fn();
+  void child.finished.then(finished);
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add(child, '+=50%')
+    .label('end');
+
+  try {
+    parent.seek('end');
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(0.5));
+    await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
+  } finally {
+    parent.cancel();
+  }
+});

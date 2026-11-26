@@ -234,12 +234,12 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
               const isolated = typeof p === 'string' && /=.*%$/.test(p);
               const host = isolated ? animeModule.createTimeline({ autoplay: false })
                 : (mixedHost ??= animeModule.createTimeline({ autoplay: false }));
-              const duration = isolated ? child.mount(host, 0) / 1000 : 0;
+              const duration = isolated ? child.mount(host, 0) : 0;
               const clock = {
                 get time() { return 0; },
-                set time(time: number) { host.seek((isolated ? time : realTl.time()) * 1000); },
+                set time(time: number) { host.seek(isolated ? time * duration : realTl.time() * 1000); },
               };
-              realTl.fromTo(clock, { time: 0 }, { time: isolated ? duration : 1, duration, ease: 'none', immediateRender: false }, p);
+              realTl.fromTo(clock, { time: 0 }, { time: 1, duration: duration / 1000, ease: 'none', immediateRender: false }, p);
               if (!isolated) {
                 const tween = realTl.recent();
                 tween.duration(child.mount(host, tween.startTime() * 1000) / 1000);
