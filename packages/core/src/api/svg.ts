@@ -38,9 +38,10 @@ export const svg = {
         if (!style) return [];
         const previous = pathTransforms.get(style);
         const inline = style.transform;
+        const composable = inline.includes('(') && !/\b(?:var|env|attr)\(/i.test(inline);
         const base = previous && previous.value === inline
           ? previous.base
-          : inline || window.getComputedStyle?.(element).transform || '';
+          : composable ? inline : window.getComputedStyle?.(element).transform || '';
         return [{ style, base: base === 'none' ? '' : base }];
       });
 

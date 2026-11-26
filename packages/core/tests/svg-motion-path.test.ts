@@ -137,6 +137,27 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     controls.cancel();
   });
 
+  it.each([
+    ['unset', 'none'],
+    ['inherit', 'matrix(0, 1, -1, 0, 0, 0)'],
+    ['initial', 'none'],
+    ['revert', 'none'],
+    ['revert-layer', 'matrix(0, 1, -1, 0, 0, 0)'],
+    ['none', 'none'],
+    ['var(--missing, none)', 'none'],
+  ])('uses the computed transform instead of composing inline %s', async (inline, computed) => {
+    const { marker, target } = browser();
+    marker.style.transform = inline;
+    vi.stubGlobal('window', { getComputedStyle: () => ({ transform: computed }) });
+
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.finish();
+    await controls.finished;
+    expect(marker.style.transform).toBe(computed === 'none' ? 'translate(40px,60px)' : `translate(40px,60px) ${computed}`);
+  });
+
   it('translates before an inline rotation and scale without stacking successive path transforms', async () => {
     const { marker, target } = browser();
     const track = geometry() as unknown as SVGGeometryElement;
