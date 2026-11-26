@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import morph, { timeline, spring, stagger, scroll, gesture, svg } from '../src/index';
 
 describe('MorphJS Stripped API', () => {
@@ -31,6 +31,33 @@ describe('MorphJS Stripped API', () => {
     expect(typeof tl.reverse).toBe('function');
     expect(typeof tl.restart).toBe('function');
     expect(typeof tl.seek).toBe('function');
+  });
+
+  it('keeps the timeline playhead on the rendered position when reversing', async () => {
+    const target = { x: 0 };
+    const tl = timeline({ autoplay: false })
+      .add(target as any, { x: [0, 100], duration: 1000, ease: 'linear' }, 0);
+
+    try {
+      await vi.waitFor(() => expect(tl.duration).toBe(1));
+      tl.seek?.(0.25);
+      expect(target.x).toBeCloseTo(25);
+      expect(tl.currentTime).toBeCloseTo(0.25);
+
+      tl.reverse();
+      expect(target.x).toBeCloseTo(25);
+      expect(tl.currentTime).toBeCloseTo(0.25);
+      await vi.waitFor(() => expect(tl.currentTime).toBeLessThan(0.2));
+      expect(tl.currentTime).toBeCloseTo(target.x / 100);
+
+      tl.pause();
+      tl.seek?.(0.4);
+      expect(target.x).toBeCloseTo(40);
+      expect(tl.currentTime).toBeCloseTo(0.4);
+      expect(tl.progress).toBeCloseTo(0.4);
+    } finally {
+      tl.pause();
+    }
   });
 
   it('should create a stagger function', () => {

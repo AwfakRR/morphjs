@@ -34,7 +34,9 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     });
     seq.forEach(s => tl.add(s.t, toAnimeOptions(s.p), s.o));
     realTl = tl;
-    return wrap(tl, 'a');
+    const controls = wrap(tl, 'a');
+    controls.seek = (time) => tl.seek(tl.reversed ? tl.duration - time * 1000 : time * 1000);
+    return controls;
   };
 
   const buildGsap = ({ gsap }: any) => {
@@ -81,11 +83,11 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     },
     get currentTime() {
       if (!realTl) return 0;
-      return activeEngine === 'g' ? (realTl.time?.() ?? 0) : ((realTl.currentTime ?? 0) / 1000);
+      return activeEngine === 'g' ? (realTl.time?.() ?? 0) : realTl.iterationCurrentTime / 1000;
     },
     get progress() {
       if (!realTl) return 0;
-      return (activeEngine === 'g' ? realTl.progress?.() : realTl.progress) ?? 0;
+      return (activeEngine === 'g' ? realTl.progress?.() : realTl.iterationProgress) ?? 0;
     },
   };
 
