@@ -76,7 +76,13 @@ function stageAnimeTargets() {
   };
   return (targets: object[]) => targets.map(target => {
     let proxy = proxies.get(target);
-    if (!proxy) proxies.set(target, proxy = new Proxy(target, forwarding));
+    if (!proxy) {
+      const element = target as Element;
+      proxy = element.nodeType === 1 && typeof element.cloneNode === 'function'
+        ? element.cloneNode(false)
+        : new Proxy(target, forwarding);
+      proxies.set(target, proxy);
+    }
     return proxy;
   });
 }
