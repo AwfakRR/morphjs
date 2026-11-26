@@ -28,7 +28,7 @@ export function useMorphSpring(initialValue: number, springOptions?: MorphSpring
         proxyRef.current as any,
         { val: nextValue },
         {
-          spring: springOptions,
+          spring: springOptions ?? true,
           onUpdate: () => {
             setCurrentValue(proxyRef.current.val);
           }

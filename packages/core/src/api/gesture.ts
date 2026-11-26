@@ -1,5 +1,6 @@
 // ponytail: clean gesture delegation to motion with lightweight native fallback
 import type { MorphTargets, MorphGestureOptions, GestureInfo } from '../types';
+import { motionAdapter } from '../adapters/motion-adapter';
 import { resolveAdapter } from '../router';
 import { resolveTargets } from '../utils/targets';
 
@@ -8,22 +9,25 @@ export function gesture(targets: MorphTargets, options: MorphGestureOptions): ()
 
   const adapter = resolveAdapter({ gesture: true });
   const elements = resolveTargets(targets);
+  const cleanups: Array<() => void> = [];
+  let useNativeHoverPress = true;
 
   if (adapter.gesture) {
     try {
       const res = adapter.gesture(elements, options);
-      return typeof res === 'function' ? res : res.cleanup;
+      const cleanup = typeof res === 'function' ? res : res.cleanup;
+      if (adapter !== motionAdapter || !options.drag) return cleanup;
+      cleanups.push(cleanup);
+      useNativeHoverPress = false;
     } catch {
       // Fall through to native pointer/drag implementation
     }
   }
 
-  const cleanups: Array<() => void> = [];
-
   for (const el of elements) {
     if (!(el instanceof HTMLElement || el instanceof SVGElement)) continue;
 
-    if (options.hover) {
+    if (useNativeHoverPress && options.hover) {
       const enter = (e: Event) => options.onHoverStart?.(e);
       const leave = (e: Event) => options.onHoverEnd?.(e);
       el.addEventListener('pointerenter', enter);
@@ -34,7 +38,7 @@ export function gesture(targets: MorphTargets, options: MorphGestureOptions): ()
       });
     }
 
-    if (options.press) {
+    if (useNativeHoverPress && options.press) {
       const down = (e: Event) => options.onPressStart?.(e);
       const up = (e: Event) => options.onPressEnd?.(e);
       el.addEventListener('pointerdown', down);

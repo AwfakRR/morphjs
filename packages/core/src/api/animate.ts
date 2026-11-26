@@ -1,7 +1,8 @@
 // ponytail: shortest API (numeric duration, boolean spring) and compact queue runner
-import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls } from '../types';
+import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls, MorphSvgOptions } from '../types';
 import { resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
+import { createNoopControls } from '../utils/controls';
 import { stateManager } from '../state';
 import { animationEvents } from '../events';
 
@@ -63,7 +64,28 @@ export function animate(
   properties: Record<string, any>,
   options: AnimateArg = {}
 ): MorphControls {
-  let opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
+  return runAnimation(targets, properties, options);
+}
+
+export function animateSvg(
+  targets: MorphTargets,
+  properties: Record<string, any>,
+  options: MorphSvgOptions = {}
+): MorphControls {
+  return runAnimation(targets, properties, options, true);
+}
+
+function runAnimation(
+  targets: MorphTargets,
+  properties: Record<string, any>,
+  options: AnimateArg,
+  useSvg = false
+): MorphControls {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return createNoopControls();
+  }
+
+  const opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
@@ -71,23 +93,31 @@ export function animate(
     opts.duration = 0;
   }
 
+  const defaultSvg = useSvg && !opts.adapter && !opts.engine;
   const adapter = resolveAdapter({
-    adapter: opts.adapter,
+    adapter: defaultSvg ? 'anime' : opts.adapter,
     engine: opts.engine,
     spring: springOpts,
+    svg: useSvg,
   });
 
   const elements = resolveTargets(targets);
   const animTargets = elements.length > 0 ? elements : targets;
 
+  const startAnimation = () => {
+    if (useSvg && adapter.svg) {
+      return adapter.svg(animTargets, properties, opts);
+    }
+    if (springOpts && adapter.spring) {
+      return adapter.spring(animTargets, properties, springOpts, opts);
+    }
+    return adapter.animate(animTargets, properties, opts);
+  };
+
   let animControls: MorphControls;
 
   try {
-    if (springOpts && adapter.spring) {
-      animControls = adapter.spring(animTargets, properties, springOpts, opts);
-    } else {
-      animControls = adapter.animate(animTargets, properties, opts);
-    }
+    animControls = startAnimation();
   } catch {
     const { controls, resolve } = createDeferredControls();
 
@@ -96,12 +126,21 @@ export function animate(
         if (adapter.ensure) {
           await adapter.ensure();
         }
-        if (springOpts && adapter.spring) {
-          resolve(adapter.spring(animTargets, properties, springOpts, opts));
-        } else {
-          resolve(adapter.animate(animTargets, properties, opts));
-        }
+        resolve(startAnimation());
       } catch (err) {
+        if (defaultSvg) {
+          try {
+            const fallback = resolveAdapter();
+            if (fallback !== adapter) {
+              await fallback.ensure?.();
+              resolve(fallback.animate(animTargets, properties, opts));
+              return;
+            }
+          } catch {
+            // No usable tween adapter.
+          }
+        }
+        if (useSvg) resolve(createNoopControls());
         console.error('[MorphJS] Deferred animation failed:', err);
       }
     };
@@ -131,4 +170,3 @@ export function animate(
 
   return animControls;
 }
-
