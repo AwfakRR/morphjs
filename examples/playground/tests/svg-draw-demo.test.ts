@@ -33,8 +33,7 @@ class MockButton {
   }
 }
 
-const flushAsync = async () => {
-  await new Promise((r) => setTimeout(r, 0));
+const flushMicrotasks = async () => {
   for (let i = 0; i < 6; i++) await Promise.resolve();
 };
 
@@ -121,27 +120,34 @@ it('toggles Draw Stroke smoothly from its current offset on mid-draw and mid-era
     },
   });
 
-  await import('animejs');
-  await import('motion');
+  const { loadAnime, loadMotion } = await import('../../../packages/morph-stripped/src/engine');
+  await Promise.all([loadAnime(), loadMotion()]);
   await import('../src/main');
-  await flushAsync();
+  await flushMicrotasks();
   expect(readOffset(path)).toBe(500);
 
   // 1. Start drawing, then click again mid-draw
   button.click();
-  await flushAsync();
+  await flushMicrotasks();
   await step(250);
   const midDrawOffset = readOffset(path);
   expect(midDrawOffset).toBeGreaterThan(300);
   expect(midDrawOffset).toBeLessThan(480);
 
   button.click();
-  await flushAsync();
-  await step(48);
+  await flushMicrotasks();
+  // Check immediately and on every frame: must reverse smoothly without flashing near 0 or snapping to 500
+  let prev = midDrawOffset;
+  for (let frame = 0; frame < 3; frame++) {
+    const immediate = readOffset(path);
+    expect(immediate).toBeGreaterThanOrEqual(prev);
+    expect(immediate).toBeLessThan(500);
+    prev = immediate;
+    await step(16);
+  }
   const afterMidDrawReverse = readOffset(path);
-  // Must continue erasing back toward 500 rather than flashing near 0
-  expect(afterMidDrawReverse).toBeGreaterThanOrEqual(midDrawOffset);
-  expect(afterMidDrawReverse).toBeLessThanOrEqual(500);
+  expect(afterMidDrawReverse).toBeGreaterThan(midDrawOffset);
+  expect(afterMidDrawReverse).toBeLessThan(500);
 
   // Settles back to hidden (500)
   await step(1600);
@@ -149,25 +155,32 @@ it('toggles Draw Stroke smoothly from its current offset on mid-draw and mid-era
 
   // 2. Full draw settles at fully visible (0)
   button.click();
-  await flushAsync();
+  await flushMicrotasks();
   await step(1600);
   expect(readOffset(path)).toBeCloseTo(0, 1);
 
   // 3. Start erasing, then click again mid-erase
   button.click();
-  await flushAsync();
+  await flushMicrotasks();
   await step(250);
   const midEraseOffset = readOffset(path);
   expect(midEraseOffset).toBeGreaterThan(20);
   expect(midEraseOffset).toBeLessThan(200);
 
   button.click();
-  await flushAsync();
-  await step(48);
+  await flushMicrotasks();
+  // Check immediately and on every frame: must resume drawing smoothly without flashing near 500 or snapping to 0
+  prev = midEraseOffset;
+  for (let frame = 0; frame < 3; frame++) {
+    const immediate = readOffset(path);
+    expect(immediate).toBeLessThanOrEqual(prev);
+    expect(immediate).toBeGreaterThan(0);
+    prev = immediate;
+    await step(16);
+  }
   const afterMidErasePlay = readOffset(path);
-  // Must continue drawing back toward 0 rather than flashing near 500
-  expect(afterMidErasePlay).toBeLessThanOrEqual(midEraseOffset);
-  expect(afterMidErasePlay).toBeGreaterThanOrEqual(0);
+  expect(afterMidErasePlay).toBeLessThan(midEraseOffset);
+  expect(afterMidErasePlay).toBeGreaterThan(0);
 
   // Settles back to fully drawn (0)
   await step(1600);
