@@ -36,7 +36,16 @@ export const svg = {
       modifier: (progress: number) => sample(from + (to - from) * clamp(progress)),
     });
     const properties = {
-      translateX: tween('px', distance => geometry.getPointAtLength(distance).x),
+      translateX: {
+        ...tween('px', distance => geometry.getPointAtLength(distance).x),
+        from: (target: HTMLElement | SVGElement) => {
+          if (!autoRotate && target.style && !target.style.transform) {
+            const transform = window.getComputedStyle?.(target).transform;
+            if (transform && transform !== 'none') target.style.transform = transform;
+          }
+          return '0px';
+        },
+      },
       translateY: tween('px', distance => geometry.getPointAtLength(distance).y),
       ...(autoRotate && {
         rotate: tween('deg', distance => {

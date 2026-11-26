@@ -87,6 +87,23 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     controls.cancel();
   });
 
+  it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
+    const { marker, target } = browser();
+    const transform = 'matrix(0.819152, 0.573576, -0.573576, 0.819152, 0, 0)';
+    const getComputedStyle = vi.fn(() => ({ transform }));
+    vi.stubGlobal('window', { getComputedStyle });
+
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.seek?.(0.6);
+    await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
+
+    expect(getComputedStyle).toHaveBeenCalledWith(target);
+    expect(marker.style.transform.trim()).toBe(`translate(40px,20px) ${transform}`);
+    controls.cancel();
+  });
+
   it('returns noop controls on the server or when the path cannot be sampled', async () => {
     const path = geometry();
     const track = path as unknown as SVGPathElement;

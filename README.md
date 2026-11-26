@@ -113,6 +113,8 @@ In both editions, `svg.motionPath(targets, path, options?)` (also `morph.svg.mot
 
 The helper applies the path's local x/y coordinates as CSS translations, so align the target's starting origin with the path's coordinate origin. For example, use an SVG marker drawn around `(0, 0)` in the same coordinate space, or an HTML marker positioned at the origin of a 1:1 path viewport. Path and ancestor transforms are not converted across coordinate spaces. This helper loads Anime.js on demand; install `animejs` to use it.
 
+With `autoRotate` off, a stylesheet transform is preserved as it was when the animation started. If that transform needs to remain live (for example, a hover rotation), apply it to a child of the path-following target instead.
+
 ### Animation Scopes
 
 In the full `morphjs` package, group animations and subscriptions for cleanup:
