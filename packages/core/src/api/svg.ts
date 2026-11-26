@@ -14,16 +14,16 @@ export const svg = {
     if (typeof window === 'undefined' || typeof document === 'undefined') return createNoopControls();
 
     let geometry: SVGGeometryElement | null;
+    let length: number;
     try {
       geometry = typeof path === 'string' ? document.querySelector<SVGGeometryElement>(path) : path;
+      if (typeof geometry?.getTotalLength !== 'function' || typeof geometry.getPointAtLength !== 'function') {
+        return createNoopControls();
+      }
+      length = geometry.getTotalLength();
     } catch {
       return createNoopControls();
     }
-    if (typeof geometry?.getTotalLength !== 'function' || typeof geometry.getPointAtLength !== 'function') {
-      return createNoopControls();
-    }
-
-    const length = geometry.getTotalLength();
     if (!Number.isFinite(length) || length <= 0) return createNoopControls();
 
     const { start = 0, end = 1, autoRotate, ease = 'linear', ...timing } = options;

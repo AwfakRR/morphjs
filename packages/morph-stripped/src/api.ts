@@ -413,16 +413,16 @@ export const svg = {
     if (typeof window === 'undefined' || typeof document === 'undefined') return mkd();
 
     let geometry: SVGGeometryElement | null;
+    let length: number;
     try {
       geometry = typeof path === 'string' ? document.querySelector<SVGGeometryElement>(path) : path;
+      if (typeof geometry?.getTotalLength !== 'function' || typeof geometry.getPointAtLength !== 'function') {
+        return mkd();
+      }
+      length = geometry.getTotalLength();
     } catch {
       return mkd();
     }
-    if (typeof geometry?.getTotalLength !== 'function' || typeof geometry.getPointAtLength !== 'function') {
-      return mkd();
-    }
-
-    const length = geometry.getTotalLength();
     if (!Number.isFinite(length) || length <= 0) return mkd();
 
     const { start = 0, end = 1, autoRotate, ease = 'linear', ...timing } = options;

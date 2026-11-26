@@ -89,6 +89,21 @@ describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion 
     expect(path.getPointAtLength).not.toHaveBeenCalled();
     expect(marker.style.transform).toBe('');
   });
+
+  it('returns noop controls when SVG geometry cannot be measured', async () => {
+    const { marker, target } = browser();
+    const path = geometry();
+    path.getTotalLength.mockImplementationOnce(() => {
+      throw new DOMException('This element is non-rendered element.', 'InvalidStateError');
+    });
+
+    const controls = svg.motionPath(target, path as unknown as SVGGeometryElement);
+    expect(controls.playState).toBe('idle');
+    await controls.finished;
+    expect(path.getTotalLength).toHaveBeenCalledOnce();
+    expect(path.getPointAtLength).not.toHaveBeenCalled();
+    expect(marker.style.transform).toBe('');
+  });
 });
 
 it('respects reduced motion in core', async () => {
