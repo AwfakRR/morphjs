@@ -242,16 +242,23 @@ export const svg = {
   draw(t: MorphTargets, o?: MorphSvgOptions): MorphControls {
     const ir = o?.direction === 'reverse' || o?.direction === 'alternate-reverse';
     const els = typeof t === 'string' && typeof document !== 'undefined' ? Array.from(document.querySelectorAll(t)) : Array.isArray(t) || (typeof NodeList !== 'undefined' && t instanceof NodeList) ? Array.from(t as any) : [t];
-    let len = 500;
-    els.forEach((el: any) => { if (el?.getTotalLength) { len = el.getTotalLength(); el.style.strokeDasharray = `${len}`; el.setAttribute('stroke-dasharray', `${len}`); } });
+    const lengths = new Map(els.map((el: any) => {
+      if (!el?.getTotalLength) return [el, 500];
+      const len = el.getTotalLength();
+      el.style.strokeDasharray = `${len}`;
+      el.setAttribute('stroke-dasharray', `${len}`);
+      return [el, len];
+    }));
+    const length = (el: unknown) => lengths.get(el) ?? 500;
     if (o?.engine === 'gsap') {
       return createDeferred(loadDrawSVG, ({ gsap, DrawSVGPlugin }) => {
         const v = toGsapOptions({}, o);
-        return DrawSVGPlugin ? wrap(ir ? gsap.to(t, { drawSVG: 0, ...v }) : gsap.from(t, { drawSVG: 0, ...v }), 'g') : wrap(gsap.fromTo(els, { strokeDashoffset: ir ? 0 : len }, { strokeDashoffset: ir ? len : 0, ...v }), 'g');
+        const offset = (_: number, el: unknown) => length(el);
+        return DrawSVGPlugin ? wrap(ir ? gsap.to(t, { drawSVG: 0, ...v }) : gsap.from(t, { drawSVG: 0, ...v }), 'g') : wrap(gsap.fromTo(els, { strokeDashoffset: ir ? 0 : offset }, { strokeDashoffset: ir ? offset : 0, ...v }), 'g');
       });
     }
-    const f = ir ? 0 : len, to = ir ? len : 0;
-    return createDeferred(loadAnime, (a) => wrap(a.animate(els, toAnimeOptions({ strokeDashoffset: [f, to] }, o)), 'a'));
+    const offsets = ir ? [0, length] : [length, 0];
+    return createDeferred(loadAnime, (a) => wrap(a.animate(els, toAnimeOptions({ strokeDashoffset: offsets }, o)), 'a'));
   },
   morph(t: MorphTargets, o: MorphSvgOptions & { d: [string, string] }): MorphControls {
     const { d, ...ao } = o;
