@@ -1,5 +1,6 @@
 import type { IAnimationAdapter, MorphAnimationOptions, MorphControls, MorphSpringOptions, MorphScrollOptions, MorphGestureOptions, MorphTargets } from '../types';
 import { toMotionEasing } from '../easing/easing';
+import { resolveTargets } from '../utils/targets';
 
 let motionModule: typeof import('motion') | null = null;
 let motionLoadPromise: Promise<typeof import('motion')> | null = null;
@@ -138,22 +139,21 @@ export const motionAdapter: IAnimationAdapter = {
 
   gesture(targets: MorphTargets, options?: MorphGestureOptions): { cleanup: () => void } {
     const motion = getMotionSync();
+    const elements = resolveTargets(targets);
     const cleanups: Array<() => void> = [];
 
-    if (options?.hover && (motion as any).hover) {
-      const cleanup = (motion as any).hover(targets, {
-        onHoverStart: options.onHoverStart,
-        onHoverEnd: options.onHoverEnd,
-      });
-      if (typeof cleanup === 'function') cleanups.push(cleanup);
+    if (options?.hover && motion.hover) {
+      cleanups.push(motion.hover(elements, (_, event) => {
+        options.onHoverStart?.(event);
+        return endEvent => options.onHoverEnd?.(endEvent);
+      }));
     }
 
-    if (options?.press && (motion as any).press) {
-      const cleanup = (motion as any).press(targets, {
-        onPressStart: options.onPressStart,
-        onPressEnd: options.onPressEnd,
-      });
-      if (typeof cleanup === 'function') cleanups.push(cleanup);
+    if (options?.press && motion.press) {
+      cleanups.push(motion.press(elements, (_, event) => {
+        options.onPressStart?.(event);
+        return endEvent => options.onPressEnd?.(endEvent);
+      }));
     }
 
     return {

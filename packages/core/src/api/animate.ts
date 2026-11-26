@@ -1,5 +1,5 @@
 // ponytail: shortest API (numeric duration, boolean spring) and compact queue runner
-import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls } from '../types';
+import type { MorphTargets, MorphAnimationOptions, MorphSpringOptions, MorphControls, MorphSvgOptions } from '../types';
 import { resolveAdapter, shouldReduceMotion } from '../router';
 import { resolveTargets } from '../utils/targets';
 import { createNoopControls } from '../utils/controls';
@@ -32,11 +32,28 @@ export function animate(
   properties: Record<string, any>,
   options: AnimateArg = {}
 ): MorphControls {
+  return runAnimation(targets, properties, options);
+}
+
+export function animateSvg(
+  targets: MorphTargets,
+  properties: Record<string, any>,
+  options: MorphSvgOptions = {}
+): MorphControls {
+  return runAnimation(targets, properties, options, true);
+}
+
+function runAnimation(
+  targets: MorphTargets,
+  properties: Record<string, any>,
+  options: AnimateArg,
+  useSvg = false
+): MorphControls {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return createNoopControls();
   }
 
-  let opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
+  const opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
   const springOpts: MorphSpringOptions | undefined =
     opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
@@ -44,43 +61,65 @@ export function animate(
     opts.duration = 0;
   }
 
+  const defaultSvg = useSvg && !opts.adapter && !opts.engine;
   const adapter = resolveAdapter({
-    adapter: opts.adapter,
+    adapter: defaultSvg ? 'anime' : opts.adapter,
     engine: opts.engine,
     spring: springOpts,
+    svg: useSvg,
   });
 
   const elements = resolveTargets(targets);
   const animTargets = elements.length > 0 ? elements : targets;
 
-  const start = (animationOptions: AnimateOptions) =>
-    springOpts && adapter.spring
-      ? adapter.spring(animTargets, properties, springOpts, animationOptions)
-      : adapter.animate(animTargets, properties, animationOptions);
-  const pendingDelay = prepareStagger(opts.delay, animTargets);
-  let animControls: MorphControls;
+  const startAnimation = (animationOptions: AnimateOptions) => {
+    if (useSvg && adapter.svg) {
+      return adapter.svg(animTargets, properties, animationOptions);
+    }
+    if (springOpts && adapter.spring) {
+      return adapter.spring(animTargets, properties, springOpts, animationOptions);
+    }
+    return adapter.animate(animTargets, properties, animationOptions);
+  };
 
+  const pendingDelay = prepareStagger(opts.delay, animTargets);
+  const loadAndAnimate = async ({ resolve, reject }: ReturnType<typeof createDeferredControls>) => {
+    let animationOptions = opts;
+    try {
+      if (pendingDelay) animationOptions = { ...opts, delay: await pendingDelay };
+      await adapter.ensure?.();
+      resolve(startAnimation(animationOptions));
+    } catch (err) {
+      if (defaultSvg) {
+        try {
+          const fallback = resolveAdapter();
+          if (fallback !== adapter) {
+            await fallback.ensure?.();
+            resolve(fallback.animate(animTargets, properties, animationOptions));
+            return;
+          }
+        } catch {
+          // No usable tween adapter.
+        }
+      }
+      if (useSvg) resolve(createNoopControls());
+      else if (pendingDelay) reject(err);
+      console.error('[MorphJS] Deferred animation failed:', err);
+    }
+  };
+
+  let animControls: MorphControls;
   if (pendingDelay) {
     const deferred = createDeferredControls();
-    void Promise.all([pendingDelay, adapter.ensure?.()])
-      .then(([delay]) => deferred.resolve(start({ ...opts, delay })))
-      .catch(deferred.reject);
+    void loadAndAnimate(deferred);
     animControls = deferred.controls;
   } else {
     try {
-      animControls = start(opts);
+      animControls = startAnimation(opts);
     } catch {
-      const { controls, resolve } = createDeferredControls();
-      const loadAndAnimate = async () => {
-        try {
-          await adapter.ensure?.();
-          resolve(start(opts));
-        } catch (err) {
-          console.error('[MorphJS] Deferred animation failed:', err);
-        }
-      };
-      loadAndAnimate();
-      return controls;
+      const deferred = createDeferredControls();
+      void loadAndAnimate(deferred);
+      return deferred.controls;
     }
   }
 

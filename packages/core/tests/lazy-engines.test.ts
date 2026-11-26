@@ -3,7 +3,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 const { motion, anime, gsap, scroll, morph, draw, trigger } = vi.hoisted(() => ({
   motion: vi.fn(),
   anime: vi.fn(),
-  gsap: { to: vi.fn(() => ({})), registerPlugin: vi.fn() },
+  gsap: { to: vi.fn(() => ({})), fromTo: vi.fn(() => ({})), registerPlugin: vi.fn() },
   scroll: vi.fn(),
   morph: vi.fn(),
   draw: vi.fn(),
@@ -44,4 +44,15 @@ it('defers browser imports and initializes ScrollTrigger on the first GSAP scrol
   expect(gsap.registerPlugin).toHaveBeenCalledWith(trigger);
   expect(morph).not.toHaveBeenCalled();
   expect(draw).not.toHaveBeenCalled();
+
+  await gsapAdapter.svg?.(target, { fill: '#fff', strokeDashoffset: 10 }).finished;
+  expect(morph).not.toHaveBeenCalled();
+  expect(draw).not.toHaveBeenCalled();
+
+  await gsapAdapter.svg?.(target, { d: ['M0 0 L10 0', 'M0 0 L10 10'] }).finished;
+  expect(morph).toHaveBeenCalledOnce();
+  expect(draw).not.toHaveBeenCalled();
+
+  await gsapAdapter.svg?.(target, { strokeDashoffset: [10, 0] }).finished;
+  expect(draw).toHaveBeenCalledOnce();
 });
