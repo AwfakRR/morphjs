@@ -512,3 +512,22 @@ it.each([['<<', 0], ['<<+=0.25', 0.25]] as const)('starts a nested Anime segment
     parent.cancel();
   }
 });
+
+it('does not count the Anime host loop default on nested completion timers', async () => {
+  const target = { x: 0 };
+  const leaf = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 1 });
+  const child = timeline({ autoplay: false })
+    .add(leaf)
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  const parent = timeline({ autoplay: false, defaults: { loop: 2 } }).add(child);
+
+  try {
+    parent.seek(1.5);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1.5));
+    expect(child.duration).toBeCloseTo(2);
+    expect(target.x).toBeCloseTo(50);
+  } finally {
+    parent.cancel();
+  }
+});

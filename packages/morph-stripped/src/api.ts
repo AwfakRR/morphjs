@@ -170,7 +170,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
       if (!realTl.cancelled) realTl.cancel();
       const current = segment = { host, start, duration: 0, labels: Object.create(null), previous: false };
       for (const insert of tracks) insert(host, current);
-      host.add({ delay: 0, duration: current.duration, onComplete: completeAnime }, start);
+      host.add({ delay: 0, loop: 0, duration: current.duration, onComplete: completeAnime }, start);
       return current.duration;
     },
   };
