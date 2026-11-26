@@ -12,13 +12,15 @@ const warmups = 8;
 
 async function runWorker() {
   const { root, edition, engine, targetCount, propertyCount } = workerData;
-  await Promise.all([import('animejs'), import('gsap')]);
+  const bundle = pathToFileURL(resolve(root, 'packages', edition, 'dist/index.js'));
+  // Load the build's own engine before enabling MorphJS's DOM guards.
+  await import(import.meta.resolve(engine === 'anime' ? 'animejs' : 'gsap', bundle));
   globalThis.window = {};
   globalThis.document = {};
   globalThis.Element = class {};
   globalThis.NodeList = class {};
 
-  const { animate } = await import(pathToFileURL(resolve(root, 'packages', edition, 'dist/index.js')));
+  const { animate } = await import(bundle);
   const properties = Object.fromEntries(
     Array.from({ length: propertyCount }, (_, index) => [`value${index}`, 100]),
   );
@@ -56,6 +58,7 @@ async function runWorker() {
 async function measure(roots, workload) {
   // Separate isolates prevent one build from warming the other's engine call sites.
   const workers = roots.map(root => new Worker(new URL(import.meta.url), {
+    execArgv: [...process.execArgv, '--experimental-import-meta-resolve'],
     workerData: { root, ...workload },
   }));
   async function sample(worker, count) {
