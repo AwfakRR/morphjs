@@ -78,13 +78,13 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     if (state.parent && !realTl.cancelled) realTl.cancel();
   };
   const addAnime = (run: () => void) => {
-    const { paused, currentTime, reversed } = realTl;
+    const { paused, currentTime, duration, reversed } = realTl;
     if (state.parent && realTl.cancelled) realTl.reset(true);
     run();
     if (paused) parkAnime();
     else {
       if (realTl.reversed !== reversed) realTl.alternate();
-      realTl.seek(currentTime, true).resume();
+      realTl.seek(reversed ? realTl.duration - (duration - currentTime) : currentTime, true).resume();
     }
   };
   const loadEngine = () => activeEngine === 'g' ? loadGsapCore() : loadAnime();

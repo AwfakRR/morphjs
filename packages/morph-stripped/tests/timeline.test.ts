@@ -58,6 +58,27 @@ it.each(['tween', 'child'] as const)('keeps an autoplaying Anime timeline runnin
   }
 });
 
+it('keeps the rendered position when appending to a reversing Anime timeline', async () => {
+  const target = { x: 0 };
+  const tl = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 2, ease: 'linear' });
+
+  try {
+    await vi.waitFor(() => expect(tl.duration).toBeCloseTo(2));
+    tl.seek(1.25);
+    tl.reverse();
+    tl.add({ y: 0 }, { y: 1, duration: 1 });
+
+    expect(tl.duration).toBeCloseTo(3);
+    expect(tl.currentTime).toBeCloseTo(1.25);
+    expect(target.x).toBeCloseTo(62.5);
+    expect(tl.playState).toBe('running');
+    await vi.waitFor(() => expect(tl.currentTime).toBeLessThan(1.2));
+  } finally {
+    tl.cancel();
+  }
+});
+
 it('positions Anime timeline segments in seconds before and after initialization', async () => {
   const tl = timeline({ autoplay: false })
     .add({ x: 0 }, { x: 1 }, 0)
