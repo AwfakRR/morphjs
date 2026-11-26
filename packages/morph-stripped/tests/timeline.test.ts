@@ -537,17 +537,47 @@ it.each(['-=50%', '+=50%', '>50%'])('throws for %s when both mixed engines are k
   }
 });
 
-it.each(['gsap', 'anime'] as const)('rejects %s parent completion when a queued percentage add resolves to mixed engines', async (engine) => {
+it.each(['gsap', 'anime'] as const)('keeps %s parent completion usable after skipping a queued mixed percentage add', async (engine) => {
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {});
   const child = timeline({ engine: engine === 'gsap' ? 'anime' : 'gsap', autoplay: false })
     .add({ x: 0 }, { x: 100, duration: 2 });
   const parent = timeline({ engine, autoplay: false }).add({ x: 0 }, { x: 100, duration: 1 });
-  const finished = parent.finished;
+  const failed = vi.fn();
+  const finished = parent.finished.catch(failed);
   try {
     expect(parent.add(child, '<+=50%')).toBe(parent);
-    await expect(finished).rejects.toThrow(mixedPercentageError);
+    parent.seek(1);
+    await vi.waitFor(() => expect(parent.currentTime).toBeCloseTo(1));
     expect(parent.duration).toBeCloseTo(1);
     parent.add(child, 0.5);
     await vi.waitFor(() => expect(parent.duration).toBeCloseTo(2.5));
+    parent.finish();
+    await finished;
+    expect(failed).not.toHaveBeenCalled();
+    expect(error.mock.calls).toEqual([[mixedPercentageError]]);
+    await parent.finished;
+  } finally {
+    error.mockRestore();
+    parent.cancel();
+  }
+});
+
+it.each(['queued', 'initialized'] as const)('resolves percent labels when a mixed-engine add is %s', async (mode) => {
+  const target = { x: 0 };
+  const label = mode === 'queued' ? 'progress 50%' : '+=50%';
+  const child = timeline({ autoplay: false }).add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  const parent = timeline({ engine: 'gsap', autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 0.25 })
+    .label(label, 0.5);
+  try {
+    if (mode === 'initialized') await vi.waitFor(() => {
+      expect(parent.duration).toBeCloseTo(0.25);
+      expect(child.duration).toBeCloseTo(1);
+    });
+    parent.add(child, label);
+    parent.seek(1);
+    await vi.waitFor(() => expect(target.x).toBeCloseTo(50));
+    expect(parent.duration).toBeCloseTo(1.5);
   } finally {
     parent.cancel();
   }
@@ -614,6 +644,26 @@ it('completes a shared Anime child at a rounded-down GSAP endpoint', async () =>
     await vi.waitFor(() => expect(parent.currentTime).toBe(0.3333333));
     expect(onComplete).toHaveBeenCalledTimes(1);
     await vi.waitFor(() => expect(finished).toHaveBeenCalledTimes(1));
+  } finally {
+    parent.cancel();
+  }
+});
+
+it('completes a rounded-down Anime child only once across overlapping clocks', async () => {
+  const onComplete = vi.fn();
+  const child = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 0.33333334, onComplete });
+  const sibling = timeline({ autoplay: false })
+    .add({ x: 0 }, { x: 100, duration: 1 });
+  const parent = timeline({ engine: 'gsap', autoplay: false }).add(child, 0).add(sibling, 0);
+
+  try {
+    parent.seek(0.3333333);
+    await vi.waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    parent.finish();
+    await Promise.resolve();
+    expect(parent.currentTime).toBe(1);
+    expect(onComplete).toHaveBeenCalledTimes(1);
   } finally {
     parent.cancel();
   }
