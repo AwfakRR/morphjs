@@ -3,10 +3,10 @@ import { animeAdapter } from '../adapters/anime-adapter';
 import { adapterRegistry } from '../adapters/adapter';
 
 type Delay = (index: number, total: number) => number;
-type AnimeDelay = (target: unknown, index: number, targets: unknown[]) => number;
+type AnimeDelay = (target: unknown, index: number, targets: unknown[] | number) => number;
 const advanced = new WeakMap<Function, {
   prepare: (targets: MorphTargets) => Promise<Delay>;
-  create: () => AnimeDelay;
+  createTimelineDelay: () => AnimeDelay;
 }>();
 
 export function prepareStagger(delay: MorphAnimationOptions['delay'], targets: MorphTargets) {
@@ -17,11 +17,13 @@ export function animeTimelineStagger(delay: MorphAnimationOptions['delay']): Ani
   const stagger = typeof delay === 'function' ? advanced.get(delay) : undefined;
   if (!stagger) return;
   const byTargets = new WeakMap<unknown[], AnimeDelay>();
+  const byCount = new Map<number, AnimeDelay>();
   return (target, index, targets) => {
-    let compute = byTargets.get(targets);
+    let compute = typeof targets === 'number' ? byCount.get(targets) : byTargets.get(targets);
     if (!compute) {
-      compute = stagger.create();
-      byTargets.set(targets, compute);
+      compute = stagger.createTimelineDelay();
+      if (typeof targets === 'number') byCount.set(targets, compute);
+      else byTargets.set(targets, compute);
     }
     return compute(target, index, targets);
   };
@@ -74,7 +76,9 @@ export function stagger(value: number, options?: MorphStaggerOptions): any {
       let direct: ReturnType<NonNullable<typeof adapter.stagger>>;
       const delay = (...args: unknown[]) => (direct ??= create())(...args);
       advanced.set(delay, {
-        create,
+        createTimelineDelay: () => adapter.stagger!(value, typeof options.start === 'number'
+          ? { ...options, start: options.start * 1000 }
+          : options),
         async prepare(targets) {
           try {
             await adapter.ensure?.();
