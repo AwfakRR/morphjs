@@ -125,6 +125,15 @@ export interface MorphSvgOptions extends MorphAnimationOptions {
   morphPrecision?: number;
 }
 
+export interface MorphMotionPathOptions extends Pick<
+  MorphAnimationOptions, 'duration' | 'ease' | 'repeat' | 'autoplay' | 'onStart' | 'onUpdate' | 'onComplete'
+> {
+  delay?: number;
+  start?: number;
+  end?: number;
+  autoRotate?: boolean;
+}
+
 // Layout / FLIP snapshot & options
 export interface FlipRect {
   readonly left: number;

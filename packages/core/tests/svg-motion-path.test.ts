@@ -1,0 +1,388 @@
+import 'animejs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { configure, svg as core } from '../src/index';
+import { svg as stripped } from '../../morph-stripped/src/index';
+
+class Marker {
+  nodeType = 1;
+  style = new class {
+    transform = '';
+    private declarations = new Map<string, { value: string; priority: string }>();
+    get cssText() { return JSON.stringify([...this.declarations]); }
+    set cssText(value: string) { this.declarations = new Map(JSON.parse(value)); }
+    getPropertyValue(name: string) { return this.declarations.get(name)?.value ?? ''; }
+    getPropertyPriority(name: string) { return this.declarations.get(name)?.priority ?? ''; }
+    setProperty(name: string, value: string, priority = '') {
+      if (value) this.declarations.set(name, { value, priority });
+      else this.declarations.delete(name);
+    }
+  };
+}
+
+function geometry() {
+  return {
+    getTotalLength: vi.fn(() => 100),
+    getPointAtLength: vi.fn((distance: number) => distance <= 40
+      ? { x: distance, y: 0 }
+      : { x: 40, y: distance - 40 }),
+  };
+}
+
+function browser(path?: ReturnType<typeof geometry>) {
+  const marker = new Marker();
+  const querySelector = vi.fn(() => path);
+  vi.stubGlobal('window', {});
+  vi.stubGlobal('document', { querySelector });
+  vi.stubGlobal('Element', Marker);
+  vi.stubGlobal('NodeList', class {});
+  return { marker, target: marker as unknown as HTMLElement, querySelector };
+}
+
+afterEach(() => {
+  configure({ reducedMotion: 'user' });
+  vi.unstubAllGlobals();
+});
+
+describe.each([['core', core], ['stripped', stripped]] as const)('%s SVG motion path', (_, svg) => {
+  it('moves all markers in a mix of NodeLists and element arrays', async () => {
+    browser();
+    const markers = [new Marker(), new Marker(), new Marker()];
+    class MarkerList {
+      forEach(callback: (marker: Marker) => void) { markers.slice(0, 2).forEach(callback); }
+      [Symbol.iterator]() { return markers.slice(0, 2)[Symbol.iterator](); }
+    }
+    vi.stubGlobal('NodeList', MarkerList);
+    const list = new MarkerList() as unknown as NodeList;
+    const group = [markers[2]] as unknown as HTMLElement[];
+
+    const controls = svg.motionPath([list, group], geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.finish();
+    await controls.finished;
+    expect(markers.map(marker => marker.style.transform)).toEqual(Array(3).fill('translate(40px,60px)'));
+  });
+
+  it('seeks by seconds along the selected segment and rotates to the sampled tangent', async () => {
+    const path = geometry();
+    const { marker, target, querySelector } = browser(path);
+    const onComplete = vi.fn();
+    const controls = svg.motionPath(target, '#track', {
+      start: 0.2, end: 0.8, duration: 2, autoplay: false, autoRotate: true, onComplete,
+    });
+
+    await vi.waitFor(() => expect(controls.playState).toBe('paused'));
+    expect(querySelector).toHaveBeenCalledWith('#track');
+    expect(path.getTotalLength).toHaveBeenCalledOnce();
+    expect(marker.style.transform.trim()).toBe('translate(20px,0px) rotate(0deg)');
+
+    controls.seek?.(1);
+    expect(marker.style.transform.trim()).toBe('translate(40px,10px) rotate(90deg)');
+
+    controls.finish();
+    await controls.finished;
+    expect(marker.style.transform.trim()).toBe('translate(40px,40px) rotate(90deg)');
+    expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it('applies easing and repeats the distance tween without writing rotation by default', async () => {
+    const { marker, target } = browser();
+    marker.style.transform = 'rotate(15deg)';
+    const path = geometry();
+    const controls = svg.motionPath(target, path as unknown as SVGPathElement, {
+      start: 2, end: -1, duration: 1, delay: 0.2, repeat: 1, ease: t => t * t, autoplay: false,
+    });
+
+    controls.seek?.(0.5);
+    await vi.waitFor(() => expect(controls.currentTime).toBe(0.5));
+    expect(controls.duration).toBe(2);
+    expect(marker.style.transform).toContain('translate(40px,35px)');
+    expect(marker.style.transform).toContain('rotate(15deg)');
+    controls.seek?.(1.5);
+    expect(marker.style.transform).toContain('translate(40px,35px)');
+    controls.cancel();
+    expect(marker.style.transform).toContain('translate(40px,60px)');
+  });
+
+  it('writes path translations and tangent rotations in pixels and degrees', async () => {
+    const { marker, target } = browser();
+    marker.style.transform = 'translateX(0%) translateY(0em) rotate(0turn)';
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false, autoRotate: true,
+    });
+
+    controls.seek?.(0.6);
+    await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
+    expect(marker.style.transform).toBe('translate(40px,20px) rotate(90deg) translateX(0%) translateY(0em) rotate(0turn)');
+    controls.cancel();
+  });
+
+  it('rotates to a diagonal tangent outside the original non-uniform scale', async () => {
+    const { marker, target } = browser();
+    marker.style.transform = 'scale(4, 1)';
+    const track = {
+      getTotalLength: () => 100,
+      getPointAtLength: (distance: number) => ({ x: distance, y: distance }),
+    } as unknown as SVGGeometryElement;
+
+    const controls = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    controls.finish();
+    await controls.finished;
+    expect(marker.style.transform).toBe('translate(100px,100px) rotate(45deg) scale(4, 1)');
+  });
+
+  it.each([
+    ['translate(-50%, -50%) scale(4, 1)', 'matrix(4, 0, 0, 1, -36, -16)', 'translate(-36px,-16px)', 'matrix(4,0,0,1,0,0)'],
+    ['', 'matrix3d(4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -36, -16, 2, 1)', 'translate3d(-36px,-16px,2px)',
+      'matrix3d(4,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)'],
+  ])('keeps the center offset outside tangent rotation (%s)', async (inline, computed, offset, linear) => {
+    const { marker, target } = browser();
+    marker.style.transform = inline;
+    const getComputedStyle = vi.fn(() => ({ transform: computed }));
+    vi.stubGlobal('window', { getComputedStyle });
+    const track = geometry() as unknown as SVGGeometryElement;
+
+    const first = svg.motionPath(target, track, { duration: 1, autoplay: false });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe(`translate(40px,60px) ${inline || computed}`);
+
+    const next = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    next.finish();
+    await next.finished;
+    expect(marker.style.transform).toBe(`translate(40px,60px) ${offset} rotate(90deg) ${linear}`);
+    expect(getComputedStyle).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['inline', 'stylesheet'])('resolves %s centering again after the marker resizes', async source => {
+    const { marker, target } = browser();
+    const inline = source === 'inline' ? 'translate(-50%, -50%) scale(4, 1)' : '';
+    marker.style.transform = inline;
+    let width = 72, height = 32;
+    vi.stubGlobal('window', {
+      getComputedStyle: () => ({
+        transform: marker.style.transform === inline
+          ? `matrix(4, 0, 0, 1, ${-width / 2}, ${-height / 2})`
+          : 'none',
+      }),
+    });
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false, autoRotate: true };
+    const first = svg.motionPath(target, track, { ...options, autoRotate: source === 'stylesheet' });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe(source === 'inline'
+      ? `translate(40px,60px) ${inline}`
+      : 'translate(40px,60px) translate(-36px,-16px) rotate(90deg) matrix(4,0,0,1,0,0)');
+
+    width = 128;
+    height = 58;
+    const next = svg.motionPath(target, track, options);
+    next.finish();
+    await next.finished;
+    expect(marker.style.transform).toBe('translate(40px,60px) translate(-64px,-29px) rotate(90deg) matrix(4,0,0,1,0,0)');
+  });
+
+  it.each([
+    ['transform, opacity', 'important'],
+    ['', ''],
+    ['var(--fade)', ''],
+    ['var(--fade)', 'important'],
+  ])(
+    'samples a repeated run without a CSS transform transition (inline: %s)',
+    async (transition, priority) => {
+      const { marker, target } = browser();
+      const property = 'transition-property';
+      const declaration = transition.startsWith('var(') ? 'transition' : property;
+      marker.style.setProperty('--fade', 'opacity 150ms');
+      marker.style.setProperty(declaration, transition, priority);
+      const inline = marker.style.cssText;
+      const track = geometry() as unknown as SVGGeometryElement;
+      const options = { duration: 1, autoplay: false };
+      const first = svg.motionPath(target, track, options);
+      first.finish();
+      await first.finished;
+      const endpoint = marker.style.transform;
+
+      const hasTransformTransition = !transition || declaration === property;
+      const reads: string[] = [];
+      let sampled = endpoint;
+      let pending = false;
+      Object.assign(marker, {
+        getAnimations: () => pending ? [{
+          transitionProperty: 'transform',
+          cancel: () => { reads.push(marker.style.transform); pending = false; },
+        }] : [],
+      });
+      vi.stubGlobal('window', {
+        getComputedStyle: () => {
+          if (sampled !== marker.style.transform) {
+            sampled = marker.style.transform;
+            pending = hasTransformTransition;
+          }
+          return { transform: pending ? 'matrix(1, 0, 0, 1, 40, 60)' : 'none' };
+        },
+      });
+      const next = svg.motionPath(target, track, options);
+      next.finish();
+      await next.finished;
+
+      expect(marker.style.transform).toBe(endpoint);
+      expect(reads).toEqual(hasTransformTransition ? ['', endpoint] : []);
+      expect(marker.style.getPropertyValue(declaration)).toBe(transition);
+      expect(marker.style.getPropertyPriority(declaration)).toBe(priority);
+      expect(marker.style.cssText).toBe(inline);
+    },
+  );
+
+  it('does not rewrite declarations when CSSOM cannot serialize a variable shorthand with an overriding longhand', async () => {
+    const { marker, target } = browser();
+    const style = marker.style;
+    style.setProperty('transition', 'var(--fade)', 'important');
+    style.setProperty('transition-delay', '25ms', 'important');
+    const write = vi.spyOn(style, 'setProperty');
+    const cancel = vi.fn();
+    const cancelOpacity = vi.fn();
+    const reads: string[] = [];
+    Object.assign(marker, {
+      getAnimations: () => [
+        { transitionProperty: 'transform', cancel: () => { reads.push(style.transform); cancel(); } },
+        { transitionProperty: 'opacity', cancel: cancelOpacity },
+      ],
+    });
+
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false };
+    const first = svg.motionPath(target, track, options);
+    first.finish();
+    await first.finished;
+    const endpoint = style.transform;
+    vi.stubGlobal('window', {
+      getComputedStyle: () => ({ transform: cancel.mock.calls.length ? 'none' : 'matrix(1, 0, 0, 1, 40, 60)' }),
+    });
+
+    const next = svg.motionPath(target, track, options);
+    next.finish();
+    await next.finished;
+
+    expect(style.transform).toBe(endpoint);
+    expect(reads).toEqual(['', endpoint]);
+    expect(cancelOpacity).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+    expect(style.getPropertyValue('transition')).toBe('var(--fade)');
+    expect(style.getPropertyPriority('transition-delay')).toBe('important');
+  });
+
+  it('keeps competing logical and physical margins in their authored order on replay', async () => {
+    const { marker, target } = browser();
+    const style = marker.style;
+    style.setProperty('margin-top', '0');
+    style.setProperty('margin-inline-start', '20px');
+    style.setProperty('margin-left', '10px');
+    style.setProperty('margin-right', '0');
+    style.setProperty('margin-bottom', '0');
+    const reparse = vi.spyOn(style, 'cssText', 'set');
+    const track = geometry() as unknown as SVGGeometryElement;
+    const options = { duration: 1, autoplay: false };
+    for (let run = 0; run < 2; run++) {
+      const controls = svg.motionPath(target, track, options);
+      controls.finish();
+      await controls.finished;
+    }
+    expect(reparse).not.toHaveBeenCalled();
+  });
+
+  it('keeps the computed transform of a stylesheet-rotated target when autoRotate is off', async () => {
+    const { marker, target } = browser();
+    const transform = 'matrix(0.819152, 0.573576, -0.573576, 0.819152, 0, 0)';
+    const getComputedStyle = vi.fn(() => ({ transform }));
+    vi.stubGlobal('window', { getComputedStyle });
+
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.seek?.(0.6);
+    await vi.waitFor(() => expect(controls.currentTime).toBe(0.6));
+
+    expect(getComputedStyle).toHaveBeenCalledWith(target);
+    expect(marker.style.transform.trim()).toBe(`translate(40px,20px) ${transform}`);
+    controls.cancel();
+  });
+
+  it.each([
+    ['unset', 'none'],
+    ['inherit', 'matrix(0, 1, -1, 0, 0, 0)'],
+    ['initial', 'none'],
+    ['revert', 'none'],
+    ['revert-layer', 'matrix(0, 1, -1, 0, 0, 0)'],
+    ['none', 'none'],
+    ['var(--missing, none)', 'none'],
+  ])('uses the computed transform instead of composing inline %s', async (inline, computed) => {
+    const { marker, target } = browser();
+    marker.style.transform = inline;
+    vi.stubGlobal('window', { getComputedStyle: () => ({ transform: computed }) });
+
+    const controls = svg.motionPath(target, geometry() as unknown as SVGGeometryElement, {
+      duration: 1, autoplay: false,
+    });
+    controls.finish();
+    await controls.finished;
+    expect(marker.style.transform).toBe(computed === 'none' ? 'translate(40px,60px)' : `translate(40px,60px) ${computed}`);
+  });
+
+  it('translates before an inline rotation and scale without stacking successive path transforms', async () => {
+    const { marker, target } = browser();
+    const track = geometry() as unknown as SVGGeometryElement;
+    marker.style.transform = 'rotate(35deg) scale(1.2)';
+
+    const first = svg.motionPath(target, track, { duration: 1, autoplay: false });
+    first.finish();
+    await first.finished;
+    expect(marker.style.transform).toBe('translate(40px,60px) rotate(35deg) scale(1.2)');
+
+    const next = svg.motionPath(target, track, { duration: 1, autoplay: false, autoRotate: true });
+    next.seek?.(0.6);
+    await vi.waitFor(() => expect(next.currentTime).toBe(0.6));
+    expect(marker.style.transform).toBe('translate(40px,20px) rotate(90deg) rotate(35deg) scale(1.2)');
+    next.cancel();
+  });
+
+  it('returns noop controls on the server or when the path cannot be sampled', async () => {
+    const path = geometry();
+    const track = path as unknown as SVGPathElement;
+    await svg.motionPath('#marker', track).finished;
+    expect(path.getTotalLength).not.toHaveBeenCalled();
+
+    const { target, querySelector, marker } = browser();
+    await svg.motionPath(target, '#missing').finished;
+    querySelector.mockImplementationOnce(() => { throw new SyntaxError('Invalid selector'); });
+    await svg.motionPath(target, '[').finished;
+    path.getTotalLength.mockReturnValueOnce(0);
+    await svg.motionPath(target, track).finished;
+    expect(path.getPointAtLength).not.toHaveBeenCalled();
+    expect(marker.style.transform).toBe('');
+  });
+
+  it('returns noop controls when SVG geometry cannot be measured', async () => {
+    const { marker, target } = browser();
+    const path = geometry();
+    path.getTotalLength.mockImplementationOnce(() => {
+      throw new DOMException('This element is non-rendered element.', 'InvalidStateError');
+    });
+
+    const controls = svg.motionPath(target, path as unknown as SVGGeometryElement);
+    expect(controls.playState).toBe('idle');
+    await controls.finished;
+    expect(path.getTotalLength).toHaveBeenCalledOnce();
+    expect(path.getPointAtLength).not.toHaveBeenCalled();
+    expect(marker.style.transform).toBe('');
+  });
+});
+
+it('respects reduced motion in core', async () => {
+  configure({ reducedMotion: 'always' });
+  const { marker, target } = browser();
+  const controls = core.motionPath(target, geometry() as unknown as SVGPathElement, { duration: 5 });
+  await controls.finished;
+  expect(marker.style.transform.trim()).toBe('translate(40px,60px)');
+});

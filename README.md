@@ -8,7 +8,7 @@
 *Combines the GPU spring/gesture power of **Motion.js**, the lightweight timeline/SVG magic of **Anime.js v4**, and the heavy-duty specialist muscle of **GSAP v3**.*
 
 [![Version](https://img.shields.io/npm/v/morphjs?style=flat-square&color=6366f1)](https://www.npmjs.com/package/morphjs)
-[![Bundle Size](https://img.shields.io/badge/bundle%20size-~7%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
+[![Bundle Size](https://img.shields.io/badge/bundle%20size-~9%20KB%20gzip-10b981?style=flat-square)](https://bundlephobia.com/package/morph-stripped)
 [![AI Agents](https://img.shields.io/badge/AI%20Agents-AGENTS.md-6366f1?style=flat-square)](AGENTS.md)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 
@@ -40,7 +40,7 @@ MorphJS comes in two editions tailored to your architecture:
 
 1. **`morph-stripped`** (*Recommended*)  
    The streamlined, zero-overhead edition. Direct unified engine loaders with zero adapter registries and zero global state managers.
-   - **Size:** `~23 KB raw` / `~7 KB gzip` (ESM)
+   - **Size:** `~30 KB raw` / `~9 KB gzip` (ESM)
 2. **`morphjs`** (Core)  
    The full-featured extensible edition with dynamic adapter plugins, lifecycle event buses, and global state tracking.
    - **Size:** `~35 KB raw` / `~9 KB gzip`
@@ -88,9 +88,13 @@ gesture('.draggable', {
   onDrag: (e, info) => console.log(info.offset.x)
 });
 
-// 7. SVG Draw & Morph (Anime.js default, GSAP MorphSVG for complex shapes)
+// 7. SVG Drawing, Morphing & Motion Paths
 svg.draw('.my-path', { duration: 1.5 });
 svg.morph('.my-path', { d: ['M...', 'M...'], duration: 1 });
+svg.motionPath('.marker', '#track', {
+  duration: 2, ease: 'easeInOut', delay: 0.2, repeat: 1,
+  start: 0.1, end: 0.9, autoRotate: true,
+});
 
 // 8. Layout FLIP Transitions (in `morphjs` core)
 import { flip } from 'morphjs';
@@ -104,6 +108,12 @@ flip.from(state, { duration: 0.4, spring: true });
 Drag limits are signed pixel offsets from the element's starting position; omitted sides are unbounded. The element stays where you leave it by default. Set `momentum: true` to glide within the limits, or `snapToOrigin: true` to spring back to the start instead (snap takes precedence). Drag callbacks report the current offset in pixels and pointer velocity in pixels per second.
 
 In `morphjs` (core), reduced motion disables the glide and makes snap-to-origin immediate.
+
+In both editions, `svg.motionPath(targets, path, options?)` (also `morph.svg.motionPath`) returns standard `MorphControls`. Pass an SVG geometry element or its selector as the path. `start` and `end` are fractions of the path length (default `0` and `1`, clamped to that range); swap them to travel backwards. `autoRotate` defaults to `false`; when enabled, it points the target's positive x-axis along the path's tangent in the direction of increasing path length. Motion is linear by default; `duration` and `delay` are in seconds.
+
+The helper applies the path's local x/y coordinates as CSS translations, so align the target's starting origin with the path's coordinate origin. For example, use an SVG marker drawn around `(0, 0)` in the same coordinate space, or an HTML marker positioned at the origin of a 1:1 path viewport. Path and ancestor transforms are not converted across coordinate spaces. This helper loads Anime.js on demand; install `animejs` to use it.
+
+With `autoRotate` enabled, the transform list applies the path translation, the target's original translation (such as a centering offset), the tangent rotation, and then the rest of the original transform. This keeps centering offsets from swinging off the path and prevents existing scale from distorting the tangent. Inline or stylesheet transforms are captured when the animation starts; apply live effects (for example, a hover rotation) to a child of the path-following target.
 
 ### Animation Scopes
 

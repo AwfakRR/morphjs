@@ -48,9 +48,10 @@ export function animateSvg(
   targets: MorphTargets,
   properties: Record<string, any>,
   options: MorphSvgOptions = {},
-  targetProperties?: (index: number) => Record<string, any>
+  targetProperties?: (index: number) => Record<string, any>,
+  createProgressTarget?: (elements: Element[]) => { progress: number }
 ): MorphControls {
-  return runAnimation(targets, properties, options, true, targetProperties);
+  return runAnimation(targets, properties, options, true, targetProperties, createProgressTarget);
 }
 
 function runAnimation(
@@ -58,7 +59,8 @@ function runAnimation(
   properties: Record<string, any>,
   options: AnimateArg,
   useSvg = false,
-  targetProperties?: (index: number) => Record<string, any>
+  targetProperties?: (index: number) => Record<string, any>,
+  createProgressTarget?: (elements: Element[]) => { progress: number }
 ): MorphControls {
   if (typeof window === 'undefined' || typeof document === 'undefined') {
     return createNoopControls();
@@ -81,7 +83,10 @@ function runAnimation(
     svg: useSvg,
   });
 
-  const elements = resolveTargets(targets);
+  const elements = createProgressTarget && Array.isArray(targets)
+    ? [...new Set(targets.flat(Infinity).flatMap(resolveTargets))]
+    : resolveTargets(targets);
+  if (createProgressTarget && !elements.length) return createNoopControls();
   const animTargets = elements.length > 0 ? elements : targets;
 
   const startAnimation = (backend: IAnimationAdapter, animationOptions: AnimateOptions, isFallback = false) => {
@@ -93,6 +98,9 @@ function runAnimation(
       return backend.animate(targets, props, options);
     };
 
+    if (createProgressTarget) {
+      return start(createProgressTarget(elements) as unknown as MorphTargets, properties, animationOptions);
+    }
     if (!targetProperties || !elements.length || backend === animeAdapter || backend === gsapAdapter) {
       return start(animTargets, properties, animationOptions);
     }

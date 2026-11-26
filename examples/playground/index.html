@@ -13,7 +13,7 @@
   <header class="hero">
     <h1>MorphJS</h1>
     <p class="subtitle">The shortest, easiest animation engine combining Motion.js & Anime.js v4</p>
-    <div class="badge">~7 KB gzip</div>
+    <div class="badge">~9 KB gzip</div>
   </header>
 
   <main class="container">
@@ -163,6 +163,26 @@
         <div class="controls">
           <button id="btn-svg-draw">Draw Stroke</button>
           <button id="btn-svg-morph">Morph Shape</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="demo-motion-path">
+      <div class="card-header">
+        <h2>SVG Motion Path</h2>
+      </div>
+      <div class="card-body">
+        <div class="demo-area svg-area">
+          <svg viewBox="0 0 280 112" width="280" height="112" aria-hidden="true">
+            <g transform="translate(24 88)">
+              <path id="motion-track" d="M0 0 C64 0 40 -64 108 -64 S152 0 232 -52"
+                    fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="5 6" />
+              <path id="motion-marker" d="M-11 -8 L11 0 L-11 8 L-6 0 Z" fill="var(--c-green)" />
+            </g>
+          </svg>
+        </div>
+        <div class="controls">
+          <button id="btn-motion-path">Follow Path</button>
         </div>
       </div>
     </section>
