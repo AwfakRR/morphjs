@@ -30,7 +30,7 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
     }
   });
 
-  it.each(['queued', 'live'])('stops at a %s pause and resumes on play', (mode) => {
+  it.each(['queued', 'live'])('stops at a %s pause and resumes on play', async (mode) => {
     const target = { value: 0 };
     const onPause = vi.fn();
     const tl = timeline({ engine, autoplay: false, defaults: { duration: 1, ease: 'linear' } })
@@ -44,12 +44,11 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
       expect(onPause).not.toHaveBeenCalled();
 
       tl.play();
-      vi.advanceTimersByTime(400);
+      await vi.advanceTimersByTimeAsync(400);
 
       expect(onPause).toHaveBeenCalledTimes(1);
       expect(tl.playState).toBe('paused');
-      expect(tl.currentTime).toBeGreaterThanOrEqual(0.2);
-      expect(tl.currentTime).toBeLessThan(0.25);
+      expect(tl.currentTime).toBeCloseTo(0.2, 5);
       const pausedValue = target.value;
       vi.advanceTimersByTime(300);
       expect(target.value).toBe(pausedValue);
@@ -64,7 +63,7 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
     expect(onPause).toHaveBeenCalledTimes(1);
   });
 
-  it('pauses without a callback and does not fire markers while seeking', () => {
+  it('pauses without a callback and does not fire markers while seeking', async () => {
     const target = { value: 0 };
     const onPause = vi.fn();
     const tl = timeline({ engine, autoplay: false, defaults: { duration: 1, ease: 'linear' } })
@@ -77,21 +76,124 @@ describe.each(['anime', 'gsap'])('%s timeline markers', (engine) => {
       expect(onPause).not.toHaveBeenCalled();
 
       tl.play();
-      vi.advanceTimersByTime(400);
+      await vi.advanceTimersByTimeAsync(400);
 
       expect(onPause).not.toHaveBeenCalled();
       expect(tl.playState).toBe('paused');
-      expect(tl.currentTime).toBeGreaterThanOrEqual(0.6);
-      expect(tl.currentTime).toBeLessThan(0.65);
+      expect(tl.currentTime).toBeCloseTo(0.6, 5);
 
       tl.seek!(0);
       tl.play();
-      vi.advanceTimersByTime(400);
+      await vi.advanceTimersByTimeAsync(400);
       expect(onPause).toHaveBeenCalledTimes(1);
     } finally {
       tl.cancel();
     }
 
     expect(onPause).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['running', 'paused'])('preserves a %s playhead when adding a pause', async (state) => {
+    const onPause = vi.fn();
+    const tl = timeline({ engine, autoplay: state === 'paused', defaults: { duration: 1 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 });
+
+    try {
+      tl.play();
+      await Promise.resolve();
+      vi.advanceTimersByTime(300);
+      if (state === 'paused') tl.pause();
+      const before = tl.currentTime;
+
+      tl.addPause(0.7, onPause);
+      expect(tl.currentTime).toBe(before);
+      expect(tl.playState).toBe(state);
+      if (state === 'paused') tl.play();
+
+      await vi.advanceTimersByTimeAsync(500);
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(tl.currentTime).toBeCloseTo(0.7, 5);
+    } finally {
+      tl.cancel();
+    }
+  });
+
+  it('renders later tweens before invoking a pause callback that seeks', async () => {
+    const later = { value: 0 };
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 1, ease: 'linear' } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+      .addPause(0.2, () => tl.seek!(0.6))
+      .add(later as unknown as MorphTargets, { value: 100 }, 0);
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(tl.currentTime).toBeCloseTo(0.6);
+      expect(later.value).toBeCloseTo(60);
+    } finally {
+      tl.cancel();
+    }
+  });
+
+  it('stops separately at two markers crossed by one frame', async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 0.205 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 })
+      .addPause(0.202, second)
+      .addPause(0.201, first);
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).not.toHaveBeenCalled();
+      expect(tl.playState).toBe('paused');
+      expect(tl.currentTime).toBeCloseTo(0.201, 5);
+
+      tl.play();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(second).toHaveBeenCalledOnce();
+      expect(tl.playState).toBe('paused');
+      expect(tl.currentTime).toBeCloseTo(0.202, 5);
+    } finally {
+      tl.cancel();
+    }
+  });
+
+  it('does not skip tween completion when stopping at a marker', async () => {
+    const completed = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 0.201 } })
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100, onComplete: completed })
+      .addPause()
+      .add({ value: 0 } as unknown as MorphTargets, { value: 100 });
+
+    try {
+      tl.play();
+      await vi.advanceTimersByTimeAsync(400);
+      expect(tl.playState).toBe('paused');
+      expect(completed).toHaveBeenCalledOnce();
+    } finally {
+      tl.cancel();
+    }
+  });
+
+  it('pauses at the marker during reverse playback', async () => {
+    const target = { value: 0 };
+    const onPause = vi.fn();
+    const tl = timeline({ engine, autoplay: false, defaults: { duration: 1, ease: 'linear' } })
+      .add(target as unknown as MorphTargets, { value: 100 })
+      .addPause(0.4, onPause);
+
+    try {
+      tl.seek!(0.8);
+      tl.reverse();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(onPause).toHaveBeenCalledOnce();
+      expect(tl.playState).toBe('paused');
+      expect(target.value).toBeCloseTo(40);
+    } finally {
+      tl.cancel();
+    }
   });
 });

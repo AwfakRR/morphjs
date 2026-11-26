@@ -161,9 +161,35 @@ export const animeAdapter: IAnimationAdapter = {
       defaults.ease = toAnimeEasing(options.defaults.ease);
     }
 
+    const pauses: Array<{ position: number; callback?: () => void }> = [];
+    let previousPosition = 0;
     const tl = anime.createTimeline({
       autoplay: options?.autoplay ?? true,
       defaults,
+      onBeforeUpdate() {
+        if (pauses.length === 0 || tl.paused) return;
+        const position = tl.iterationCurrentTime;
+        if (position === previousPosition) return;
+
+        const forward = position > previousPosition;
+        let marker: (typeof pauses)[number] | undefined;
+        for (const pause of pauses) {
+          const at = pause.position;
+          const crossed = forward ? previousPosition < at && at <= position : position <= at && at < previousPosition;
+          if (crossed && (!marker || (forward ? at < marker.position : at > marker.position))) marker = pause;
+        }
+        if (!marker) {
+          previousPosition = position;
+          return;
+        }
+
+        // Rewind the unrendered tick, then render to the marker with tween callbacks enabled.
+        const time = tl.currentTime;
+        tl.pause().seek(time - Math.abs(position - previousPosition), true);
+        previousPosition = marker.position;
+        tl.seek(time - Math.abs(position - marker.position));
+        if (marker.callback) queueMicrotask(marker.callback);
+      },
     });
 
     // Add segments
@@ -173,24 +199,21 @@ export const animeAdapter: IAnimationAdapter = {
     }
 
     const controls = wrapAnimeControls(tl);
-    let suppressPauseMarkers = false;
-    const withoutPauseMarkers = <Args extends unknown[]>(action: (...args: Args) => void) =>
+    const syncPlayhead = <Args extends unknown[]>(action: (...args: Args) => void) =>
       (...args: Args) => {
-        const wasSuppressed = suppressPauseMarkers;
-        suppressPauseMarkers = true;
-        try {
-          action(...args);
-        } finally {
-          suppressPauseMarkers = wasSuppressed;
-        }
+        action(...args);
+        previousPosition = tl.iterationCurrentTime;
       };
 
     // Extend with timeline-specific methods
     return {
       ...controls,
-      seek: withoutPauseMarkers(controls.seek!),
-      cancel: withoutPauseMarkers(controls.cancel),
-      finish: withoutPauseMarkers(controls.finish),
+      play: syncPlayhead(controls.play),
+      seek: syncPlayhead(controls.seek!),
+      cancel: syncPlayhead(controls.cancel),
+      finish: syncPlayhead(controls.finish),
+      restart: syncPlayhead(controls.restart),
+      reverse: syncPlayhead(controls.reverse),
       get duration() {
         return (tl.duration || 0) / 1000;
       },
@@ -206,6 +229,7 @@ export const animeAdapter: IAnimationAdapter = {
       add(addTargets, addProps, offset?) {
         const addOpts = toAnimeOptions(addProps);
         tl.add(addTargets, addOpts, toAnimePosition(offset));
+        previousPosition = tl.iterationCurrentTime;
         return this;
       },
       label(name, offset?) {
@@ -213,11 +237,20 @@ export const animeAdapter: IAnimationAdapter = {
         return this;
       },
       addPause(offset?, callback?) {
-        tl.call(() => {
-          if (suppressPauseMarkers) return;
-          tl.pause();
-          callback?.();
-        }, toAnimePosition(offset));
+        // Let Anime resolve the position and account for it in the duration.
+        let key = '__morph_pause';
+        while (key in tl.labels) key += '_';
+        tl.label(key, toAnimePosition(offset));
+        const position = tl.labels[key];
+        delete tl.labels[key];
+        pauses.push({ position, callback });
+
+        const time = tl.currentTime;
+        const wasPaused = tl.paused;
+        // Anime reinitializes the playhead when adding a child.
+        tl.pause().add({ duration: 0, delay: 0 }, position).pause().seek(time, true);
+        previousPosition = tl.iterationCurrentTime;
+        if (!wasPaused) tl.resume();
         return this;
       },
     };
