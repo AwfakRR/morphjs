@@ -53,6 +53,7 @@ type TimelineState = {
   native: () => { tl: any; engine: 'g' | 'a'; anime: AnimeModule };
   adopt: () => void;
   mount: (host: any, start: number) => number;
+  syncGsap: () => void;
   parent?: TimelineState;
 };
 const timelines = new WeakMap<MorphTimeline, TimelineState>();
@@ -88,6 +89,7 @@ function withAnimeStart(value: any, from: (target: object) => unknown): any {
 export function timeline(opt?: TimelineOptions): MorphTimeline {
   const seq: Array<() => void> = [];
   const tracks: AnimeTrack[] = [];
+  const gsapSamples: Array<() => void> = [];
   const firstProperties = new WeakMap<object, Map<string, number>>();
   let anime: AnimeModule;
   let mixedHost: any;
@@ -114,6 +116,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
     else run();
   };
   const control = (run: () => void) => step(() => enqueue(run));
+  const syncGsap = () => { for (const sample of gsapSamples) sample(); };
   const addAnime = (run: () => void) => {
     const { paused, currentTime, duration, reversed } = realTl;
     run();
@@ -163,6 +166,7 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   const state: TimelineState = {
     ready: () => ready.then(() => pending),
     native: () => ({ tl: realTl, engine: activeEngine, anime }),
+    syncGsap,
     adopt: () => {
       if (realTl && activeEngine === 'a' && !realTl.cancelled) realTl.cancel();
     },
@@ -176,7 +180,15 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
   };
 
   const deferred = createDeferred(() => ready, () => {
-    if (activeEngine === 'g') return wrap(realTl, 'g');
+    if (activeEngine === 'g') {
+      const controls = wrap(realTl, 'g');
+      controls.seek = time => { realTl.seek(time); syncGsap(); };
+      for (const key of ['restart', 'finish'] as const) {
+        const run = controls[key];
+        controls[key] = () => { run(); syncGsap(); };
+      }
+      return controls;
+    }
     const controls = wrap(realTl, 'a');
     controls.seek = (time) => {
       if (!segment && state.parent) return;
@@ -228,19 +240,28 @@ export function timeline(opt?: TimelineOptions): MorphTimeline {
           } else if (activeEngine === 'g' && engine === 'g') {
             realTl.add(tl, p);
             tl.paused(false);
+            gsapSamples.push(child.syncGsap);
           } else {
             const controls = t as MorphTimeline;
             if (engine === 'a') {
               const isolated = typeof p === 'string' && /=.*%$/.test(p);
               const host = isolated ? animeModule.createTimeline({ autoplay: false })
                 : (mixedHost ??= animeModule.createTimeline({ autoplay: false }));
-              const duration = isolated ? child.mount(host, 0) : 0;
-              const clock = {
-                get time() { return 0; },
-                set time(time: number) { host.seek(isolated ? time * duration : realTl.time() * 1000); },
-              };
-              realTl.fromTo(clock, { time: 0 }, { time: 1, duration: duration / 1000, ease: 'none', immediateRender: false }, p);
-              if (!isolated) {
+              if (isolated) {
+                const duration = child.mount(host, 0);
+                realTl.to({}, { duration: duration / 1000 }, p);
+                const tween = realTl.recent();
+                gsapSamples.push(() => {
+                  const time = tween.progress() * duration;
+                  if (host.currentTime !== time) host.seek(time);
+                });
+                realTl.eventCallback('onUpdate', syncGsap);
+              } else {
+                const clock = {
+                  get time() { return 0; },
+                  set time(_: number) { host.seek(realTl.time() * 1000); },
+                };
+                realTl.fromTo(clock, { time: 0 }, { time: 1, duration: 0, ease: 'none', immediateRender: false }, p);
                 const tween = realTl.recent();
                 tween.duration(child.mount(host, tween.startTime() * 1000) / 1000);
               }

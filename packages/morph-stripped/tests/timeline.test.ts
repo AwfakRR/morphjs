@@ -595,3 +595,27 @@ it('completes a percentage-positioned Anime child with a fractional duration', a
     parent.cancel();
   }
 });
+
+it.each(['seek', 'nested seek', 'play'] as const)('restores a completed percentage-positioned Anime child on parent %s', async (mode) => {
+  const target = { x: 0 };
+  const child = timeline({ autoplay: false })
+    .add(target, { x: [0, 100], duration: 1, ease: 'linear' });
+  const inner = timeline({ engine: 'gsap', autoplay: false })
+    .add(child, '+=50%')
+    .add({ x: 0 }, { x: 100, duration: 3 });
+  const parent = mode === 'nested seek'
+    ? timeline({ engine: 'gsap', autoplay: false }).add(inner)
+    : inner;
+
+  try {
+    parent.seek(2);
+    await vi.waitFor(() => expect(target.x).toBeCloseTo(100));
+    child.seek(0.25);
+    expect(target.x).toBeCloseTo(25);
+    if (mode === 'play') parent.play();
+    else parent.seek(3);
+    await vi.waitFor(() => expect(target.x).toBeCloseTo(100));
+  } finally {
+    parent.cancel();
+  }
+});
