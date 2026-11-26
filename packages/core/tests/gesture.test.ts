@@ -34,6 +34,50 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('core gestures', () => {
+  it.each(['never', 'always'] as const)('snaps back to the existing translation with reducedMotion: %s', async (reducedMotion) => {
+    configure({ reducedMotion });
+    const target = new TestElement();
+    const onDragEnd = vi.fn();
+    vi.stubGlobal('getComputedStyle', () => ({ transform: 'matrix(1, 0, 0, 1, 30, -12)' }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const cleanup = gesture(target as unknown as Element, { drag: { snapToOrigin: true }, onDragEnd });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 20, 0, 20);
+    expect(target.style.transform).toBe('translate(50px, -12px)');
+    send(target, 'pointerup', 20, 0, 25);
+    await Promise.resolve();
+
+    expect(onDragEnd).toHaveBeenCalledWith(expect.any(Event), expect.objectContaining({ offset: { x: 20, y: 0 } }));
+    if (reducedMotion === 'always') {
+      expect(animate).not.toHaveBeenCalled();
+    } else {
+      expect(animate).toHaveBeenCalledWith(20, 0, expect.objectContaining({ type: 'spring' }));
+      animate.mock.lastCall![2].onUpdate(0);
+    }
+    expect(target.style.transform).toBe('translate(30px, -12px)');
+    cleanup();
+  });
+
+  it('clamps momentum relative to the existing translation', async () => {
+    const target = new TestElement();
+    vi.stubGlobal('getComputedStyle', () => ({
+      transform: 'matrix3d(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 30, -12, 0, 1)',
+    }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const cleanup = gesture(target as unknown as Element, { drag: { constraints: { left: -15, right: 25 }, momentum: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', -30, 0, 20);
+    expect(target.style.transform).toBe('translate(15px, -12px)');
+    send(target, 'pointermove', 10, 0, 40);
+    send(target, 'pointerup', 10, 0, 45);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledWith(10, 25, expect.objectContaining({ type: 'inertia', min: -15, max: 25 }));
+    animate.mock.lastCall![2].onUpdate(50);
+    expect(target.style.transform).toBe('translate(55px, -12px)');
+    cleanup();
+  });
+
   it('clamps signed bounds, reports velocity, and preserves position across drags', () => {
     const target = new TestElement();
     const onDrag = vi.fn(), onDragEnd = vi.fn();

@@ -67,9 +67,13 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   let pointerId: number | undefined;
   let lastMove = 0;
   let release = 0;
+  let base: [number, number] | undefined;
   const animations: Array<{ stop(): void }> = [];
 
-  const render = () => { el.style.transform = `translate(${x.position}px, ${y.position}px)`; };
+  const render = () => {
+    const [left, top] = base ?? [0, 0];
+    el.style.transform = `translate(${left + x.position}px, ${top + y.position}px)`;
+  };
   const snapBack = () => {
     if (!x.position && !y.position) return;
     x.position = y.position = 0;
@@ -90,6 +94,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const e = event as PointerEvent;
     if (pointerId !== undefined) return;
     stop();
+    base ??= readTranslation(el);
     pointerId = e.pointerId;
     for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
       axis.from = axis.position;
@@ -172,4 +177,13 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
       pointerId = undefined;
     }
   };
+}
+
+function readTranslation(el: Element): [number, number] {
+  if (typeof getComputedStyle === 'undefined') return [0, 0];
+  const matrix = /^matrix(3d)?\((.+)\)$/.exec(getComputedStyle(el).transform);
+  if (!matrix) return [0, 0];
+  const values = matrix[2].split(',');
+  const x = matrix[1] ? 12 : 4;
+  return [Number(values[x]) || 0, Number(values[x + 1]) || 0];
 }

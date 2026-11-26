@@ -238,9 +238,13 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
   let pointerId: number | undefined;
   let lastMove = 0;
   let release = 0;
+  let base: string[] | undefined;
   const animations: Array<{ stop(): void }> = [];
 
-  const render = () => { el.style.translate = `${x.position}px ${y.position}px`; };
+  const render = () => {
+    const [left = '0px', top = '0px', z] = base ?? [];
+    el.style.translate = `${addTranslation(left, x.position)} ${addTranslation(top, y.position)}${z ? ` ${z}` : ''}`;
+  };
   const stop = () => {
     release++;
     animations.splice(0).forEach(animation => animation.stop());
@@ -256,6 +260,7 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
     const e = event as PointerEvent;
     if (pointerId !== undefined) return;
     stop();
+    base ??= readTranslation(el);
     pointerId = e.pointerId;
     for (const [axis, point] of [[x, e.clientX], [y, e.clientY]] as const) {
       axis.from = axis.position;
@@ -336,6 +341,29 @@ function bindDrag(el: HTMLElement | SVGElement, options: MorphGestureOptions): (
       pointerId = undefined;
     }
   };
+}
+
+function readTranslation(el: Element): string[] {
+  if (typeof getComputedStyle === 'undefined') return [];
+  const value = getComputedStyle(el).translate;
+  if (!value || value === 'none') return [];
+  const axes: string[] = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < value.length; i++) {
+    if (value[i] === '(') depth++;
+    else if (value[i] === ')') depth--;
+    else if (value[i] === ' ' && !depth) {
+      axes.push(value.slice(start, i));
+      start = i + 1;
+    }
+  }
+  axes.push(value.slice(start));
+  return axes;
+}
+
+function addTranslation(base: string, offset: number): string {
+  if (!offset) return base;
+  return base.endsWith('px') ? `${Number(base.slice(0, -2)) + offset}px` : `calc(${base} + ${offset}px)`;
 }
 
 function pathTemplate(d: string): string {

@@ -22,6 +22,45 @@ function send(target: EventTarget, type: string, clientX: number, clientY: numbe
 }
 
 describe('stripped gestures', () => {
+  it('snaps back to the existing translation rather than to zero', async () => {
+    const target = setupCard();
+    const onDragEnd = vi.fn();
+    vi.stubGlobal('getComputedStyle', () => ({ translate: '30px -12px' }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const cleanup = gesture('#card', { drag: { snapToOrigin: true }, onDragEnd });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', 20, 0, 20);
+    expect(target.style.translate).toBe('50px -12px');
+    send(target, 'pointerup', 20, 0, 25);
+    await Promise.resolve();
+
+    expect(onDragEnd).toHaveBeenCalledWith(expect.any(Event), expect.objectContaining({ offset: { x: 20, y: 0 } }));
+    expect(animate).toHaveBeenCalledWith(20, 0, expect.objectContaining({ type: 'spring' }));
+    animate.mock.lastCall![2].onUpdate(0);
+    expect(target.style.translate).toBe('30px -12px');
+    cleanup();
+  });
+
+  it('clamps momentum relative to the existing translation', async () => {
+    const target = setupCard();
+    vi.stubGlobal('getComputedStyle', () => ({
+      translate: 'calc(20% + 2px) -12px 3px',
+    }));
+    animate.mockReturnValue({ stop: vi.fn() });
+    const cleanup = gesture('#card', { drag: { constraints: { left: -15, right: 25 }, momentum: true } });
+    send(target, 'pointerdown', 0, 0, 0);
+    send(target, 'pointermove', -30, 0, 20);
+    expect(target.style.translate).toBe('calc(calc(20% + 2px) + -15px) -12px 3px');
+    send(target, 'pointermove', 10, 0, 40);
+    send(target, 'pointerup', 10, 0, 45);
+    await Promise.resolve();
+
+    expect(animate).toHaveBeenCalledWith(10, 25, expect.objectContaining({ type: 'inertia', min: -15, max: 25 }));
+    animate.mock.lastCall![2].onUpdate(50);
+    expect(target.style.translate).toBe('calc(calc(20% + 2px) + 25px) -12px 3px');
+    cleanup();
+  });
+
   it('clamps signed bounds, reports velocity, and preserves position across drags', () => {
     const target = setupCard();
     const onDrag = vi.fn(), onDragEnd = vi.fn();
