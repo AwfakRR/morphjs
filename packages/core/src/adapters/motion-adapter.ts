@@ -63,6 +63,11 @@ export function wrapMotionControls(motionAnimation: any): MorphControls {
   };
 }
 
+// Motion writes animated objects during the render phase, so callbacks that read them run after it.
+function afterRender(motion: typeof import('motion'), onUpdate?: (value: any) => void) {
+  return onUpdate ? (value: any) => motion.frame.postRender(() => onUpdate(value)) : undefined;
+}
+
 export const motionAdapter: IAnimationAdapter = {
   name: 'motion',
   capabilities: ['tween', 'spring', 'scroll', 'gesture', 'layout'],
@@ -74,6 +79,7 @@ export const motionAdapter: IAnimationAdapter = {
       ? {
           ...options,
           ease: options.ease !== undefined ? toMotionEasing(options.ease) : undefined,
+          onUpdate: afterRender(motion, options.onUpdate),
         }
       : undefined;
     const animation = motion.animate(targets, keyframes, motionOptions as any);
@@ -82,11 +88,10 @@ export const motionAdapter: IAnimationAdapter = {
 
   spring: (targets: any, keyframes: any, springOptions: MorphSpringOptions, options?: MorphAnimationOptions) => {
     const motion = getMotionSync();
-    const onUpdate = options?.onUpdate;
     const transition = {
       ...springOptions,
       type: 'spring' as const,
-      onUpdate: onUpdate ? (value: number) => motion.frame.postRender(() => onUpdate(value)) : undefined,
+      onUpdate: afterRender(motion, options?.onUpdate),
     };
     let seq = false, s1: any = {}, s2: any = {};
     for (const [k, v] of Object.entries(keyframes)) {

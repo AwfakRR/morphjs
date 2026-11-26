@@ -60,10 +60,9 @@ function runAnimation(
   }
 
   const opts: AnimateOptions = typeof options === 'number' ? { duration: options } : { ...options };
+  const springOpts: MorphSpringOptions | undefined =
+    opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
   const reduceMotion = shouldReduceMotion();
-  const springOpts: MorphSpringOptions | undefined = reduceMotion
-    ? undefined
-    : opts.spring === true ? {} : typeof opts.spring === 'object' ? opts.spring : undefined;
 
   if (reduceMotion) {
     opts.duration = 0;
@@ -84,7 +83,7 @@ function runAnimation(
     if (useSvg && adapter.svg) {
       return adapter.svg(animTargets, properties, animationOptions);
     }
-    if (springOpts && adapter.spring) {
+    if (springOpts && adapter.spring && !reduceMotion) {
       return adapter.spring(animTargets, properties, springOpts, animationOptions);
     }
     return adapter.animate(animTargets, properties, animationOptions);

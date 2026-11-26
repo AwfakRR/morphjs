@@ -103,12 +103,15 @@ describe('Motion springs with reduced motion', () => {
   });
 
   it.each([
-    ['animate({ spring })', (proxy: any) => animate(proxy, { val: 100 }, { spring: { stiffness: 100, damping: 10 } })],
-    ['spring()', (proxy: any) => spring(proxy, { val: 100 })],
-    ['keyframe spring()', (proxy: any) => spring(proxy, { val: [0, 140, 100] }, {})],
+    ['animate({ spring })', (proxy: any, onUpdate: () => void) =>
+      animate(proxy, { val: 100 }, { spring: { stiffness: 100, damping: 10 }, onUpdate })],
+    ['spring()', (proxy: any, onUpdate: () => void) => spring(proxy, { val: 100 }, undefined, { onUpdate })],
+    ['keyframe spring()', (proxy: any, onUpdate: () => void) =>
+      spring(proxy, { val: [0, 140, 100] }, {}, { onUpdate })],
   ])('jumps %s straight to its final value', async (_, run) => {
     const proxy = { val: 0 };
-    const controls = run(proxy);
+    const updates: number[] = [];
+    const controls = run(proxy, () => updates.push(proxy.val));
     const samples: number[] = [];
 
     for (let elapsed = 0; elapsed < 1000; elapsed += 50) {
@@ -119,5 +122,7 @@ describe('Motion springs with reduced motion', () => {
     await controls.finished;
 
     expect(samples).toEqual(samples.map(() => 100));
+    expect(updates.length).toBeGreaterThan(0);
+    expect(updates).toEqual(updates.map(() => 100));
   });
 });
